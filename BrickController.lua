@@ -126,7 +126,7 @@ function CryptTools.WhiteningEncode(data, dataStartIndex, len, ctx)
             local uVar2 = CryptTools.WhiteningOutput(ctx)
             local bit = (currentByte >> bitIndex) & 1
             local encoded_bit = uVar2 ~ bit
-            currentResult = currentResult + (encoded_bit << bitIndex)
+            currentResult = currentResult | (encoded_bit << bitIndex)
         end
         data[dataStartIndex + index] = currentResult & 0xFF
     end
@@ -272,11 +272,11 @@ local CTXValue2_CaDA = 0x26
 
 function myproto.dissector(buffer, pinfo, tree)
 
+	local length = buffer:len()
+
 	if not tostring(pinfo.cols.protocol) == "LE LL" then
 		return 0
 	end
-
-	length = buffer:len()
 
 	if not (length == 63) then 
 		return 0
