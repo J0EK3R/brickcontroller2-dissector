@@ -176,14 +176,12 @@ function CryptTools.GetRfPayload(seed, header, data, headerOffset, ctxValue1, ct
     set_uint16(resultBuffer, checksumOffset, checksum)
 
     -- Whitening with first context value.
-    local ctxArray1 = {}
-    for i = 0, 6 do ctxArray1[i] = 0 end
+    local ctxArray1 = {0,0,0,0,0,0,0}
     CryptTools.WhiteningInit(ctxValue1, ctxArray1)
     CryptTools.WhiteningEncode(resultBuffer, seedOffset, seedLength + dataLength + checksumLength, ctxArray1)
 
     -- Whitening with second context value.
-    local ctxArray2 = {}
-    for i = 0, 6 do ctxArray2[i] = 0 end
+    local ctxArray2 = {0,0,0,0,0,0,0}
     CryptTools.WhiteningInit(ctxValue2, ctxArray2)
     CryptTools.WhiteningEncode(resultBuffer, 0, resultBufferLength, ctxArray2)
 
@@ -217,14 +215,12 @@ function CryptTools.DecryptRfPayload(seed, headerLength, dataLength, headerOffse
     end
 
     -- Reverse the second whitening.
-    local ctxArray2 = {}
-    for i = 0, 6 do ctxArray2[i] = 0 end
+    local ctxArray2 = {0,0,0,0,0,0,0}
     CryptTools.WhiteningInit(ctxValue2, ctxArray2)
     CryptTools.WhiteningEncode(resultBuffer, 0, resultBufferLength, ctxArray2)
 
     -- Reverse the first whitening.
-    local ctxArray1 = {}
-    for i = 0, 6 do ctxArray1[i] = 0 end
+    local ctxArray1 = {0,0,0,0,0,0,0}
     CryptTools.WhiteningInit(ctxValue1, ctxArray1)
     CryptTools.WhiteningEncode(resultBuffer, seedOffset, seedLength + dataLength + checksumLength, ctxArray1)
 
