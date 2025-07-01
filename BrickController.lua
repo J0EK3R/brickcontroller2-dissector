@@ -31,7 +31,7 @@ function BrickController.dissector(buffer, pinfo, tree)
 	local length = buffer:len()
 
     -- check buffer length
-    if not (length == 63) then 
+    if not (length == 63 or length == 55) then 
 		return 0
 	end
 
@@ -125,37 +125,51 @@ function BrickController.dissector(buffer, pinfo, tree)
 				else
 					frameinfo = "CaDA - Android - unknown"
 				end
+
+                if tree and rawData then
+                    local tvb = ByteArray.tvb(rawData, frameinfo)
+                    local subtree = tree:add(BrickController, tvb(), frameinfo)
+                    subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+                    subtree:add(tvb( 0, 1), "Id: 0x" .. tvb( 0, 1))
+                    subtree:add(tvb( 1, 1), "Cmd: 0x" .. tvb( 1, 1))
+                    subtree:add(tvb( 2, 3), "DeviceAddr: 0x" .. tvb( 2, 3))
+                    subtree:add(tvb( 5, 3), "AppAddr: 0x" .. tvb( 5, 3))
+                    subtree:add(tvb( 8, 2), "Random: 0x" .. tvb( 8, 2))
+                    subtree:add(tvb(10, 1), "Channel 1: 0x" .. tvb(10, 1))
+                    subtree:add(tvb(11, 1), "Channel 2: 0x" .. tvb(11, 1))
+                    subtree:add(tvb(12, 1), "Channel 3: 0x" .. tvb(12, 1))
+                end
 			else
 				frameinfo = "CaDA - Android - unknown"
-			end
 
-            if tree and rawData then
-                local tvb = ByteArray.tvb(rawData, frameinfo)
-                local subtree = tree:add(BrickController, tvb(), frameinfo)
-                subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
-                subtree:add(tvb( 0, 1), "Id: 0x" .. tvb( 0, 1))
-                subtree:add(tvb( 1, 1), "Cmd: 0x" .. tvb( 1, 1))
-                subtree:add(tvb( 2, 3), "DeviceAddr: 0x" .. tvb( 2, 3))
-                subtree:add(tvb( 5, 3), "AppAddr: 0x" .. tvb( 5, 3))
-                subtree:add(tvb( 8, 2), "Random: 0x" .. tvb( 8, 2))
-                subtree:add(tvb(10, 1), "Channel 1: 0x" .. tvb(10, 1))
-                subtree:add(tvb(11, 1), "Channel 2: 0x" .. tvb(11, 1))
-                subtree:add(tvb(12, 1), "Channel 3: 0x" .. tvb(12, 1))
+                if tree and rawData then
+                    local tvb = ByteArray.tvb(rawData, frameinfo)
+                    local subtree = tree:add(BrickController, tvb(), frameinfo)
+                    subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+                end
             end
             
         end
 
 	-- iOS
 	elseif service_flags then
+        local cadaResponse = 
+            buffer(advDataOffset + 3,  1):uint() == 0x13 and -- Length: 19
+            buffer(advDataOffset + 4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+            buffer(advDataOffset + 5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+            buffer(advDataOffset + 6,  1):uint() == 0xff and
+            buffer(advDataOffset + 7,  1):uint() == 0x75 and -- CaDA identifier
+            bit.band(buffer(advDataOffset + 8,  1):uint(), 0x40) > 0
+
 		local service_Data = 
             buffer(advDataOffset + 3,  1):uint() == 0x1b and -- Length: 27
             buffer(advDataOffset + 4,  1):uint() == 0x03     -- type: 16-bit Service Class UUIDs (0x03)
 
-		local service_Connect = 
-            buffer(advDataOffset + 23, 1):uint() == 0x12 and -- fill bytes
-            buffer(advDataOffset + 24, 1):uint() == 0x13
-
 		if service_Data then
+            local service_Connect = 
+                buffer(advDataOffset + 23, 1):uint() == 0x12 and -- fill bytes
+                buffer(advDataOffset + 24, 1):uint() == 0x13
+
 			local rawDataOffset = 34
 			local rawDataLength = 27
 			local headerOffset = 13
@@ -178,6 +192,26 @@ function BrickController.dissector(buffer, pinfo, tree)
                 local tvb = ByteArray.tvb(rawData, frameinfo)
                 local subtree = tree:add(BrickController, tvb(), frameinfo)
                 subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+            end
+
+		elseif cadaResponse then
+			local rawDataOffset = 36
+			local rawDataLength = 16
+
+            resultDataLength = 8
+            frameinfo = "CaDA - Android - Response"
+            datagramname = "Response-Datagram"
+			
+			rawData = buffer(rawDataOffset,rawDataLength):bytes()
+
+            if tree and rawData then
+                local tvb = ByteArray.tvb(rawData, frameinfo)
+                local subtree = tree:add(BrickController, tvb(), frameinfo)
+                subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+                subtree:add(tvb( 0, 1), "Id: 0x" .. tvb( 0, 1))
+                subtree:add(tvb( 1, 1), "Cmd: 0x" .. tvb( 1, 1))
+                subtree:add(tvb( 2, 3), "DeviceAddr: 0x" .. tvb( 2, 3))
+                subtree:add(tvb( 5, 3), "AppAddr: 0x" .. tvb( 5, 3))
             end
         end
 	else
