@@ -22,16 +22,19 @@ local CTXValue2_CaDA = 0x26
 
 function BrickController.dissector(buffer, pinfo, tree)
 
-	local length = buffer:len()
-
+    -- check protocol string
 	if not tostring(pinfo.cols.protocol) == "LE LL" then
 		return 0
 	end
 
-	if not (length == 63) then 
+	local length = buffer:len()
+
+    -- check buffer length
+    if not (length == 63) then 
 		return 0
 	end
 
+    -- get advertisingdata
 	local advertisingdata = buffer(29,31):bytes()
 
 	local manufacturerSpecific_flags = advertisingdata:get_index(0) == 0x02 and advertisingdata:get_index(1) == 0x01 and advertisingdata:get_index(2) == 0x02
