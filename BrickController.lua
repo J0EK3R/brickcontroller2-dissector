@@ -8,6 +8,7 @@ package.path = package.path .. ";" .. bindir .. "/?.lua"
 
 -- load modul
 local CryptTools = require("CryptTools")
+local CaDATools = require("CaDATools")
 
 -- Define a new protocol for post-dissector usage.
 local BrickController = Proto("BrickController", "Global Frame Analyzer for Bluetooth LE Broadcast")
@@ -94,6 +95,12 @@ function BrickController.dissector(buffer, pinfo, tree)
 			local data = buffer(rawDataOffset,rawDataLength)
 			rawData = CryptTools.DecryptRfPayload(SeedArray_MK, 3, resultDataLength, headerOffset, CTXValue1_MK, CTXValue2_MK, data:bytes())
 
+            if tree and rawData then
+                local tvb = ByteArray.tvb(rawData, frameinfo)
+                local subtree = tree:add(BrickController, tvb(), frameinfo)
+                subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+            end
+
 		-- CaDA
 		elseif manufacturerSpecific_Company_0xc200 then
 			local rawDataOffset = 36
@@ -106,7 +113,7 @@ function BrickController.dissector(buffer, pinfo, tree)
 			
 			local data = buffer(rawDataOffset,rawDataLength)
 			rawData = CryptTools.DecryptRfPayload(SeedArray_CaDA, 3, resultDataLength, headerOffset, CTXValue1_CaDA, CTXValue2_CaDA, data:bytes())
-			
+
 			if rawData:get_index(0) == 0x75 then
 				local command = rawData:get_index(1)
 				
@@ -114,13 +121,29 @@ function BrickController.dissector(buffer, pinfo, tree)
 					frameinfo = "CaDA - Android - Connect"
 				elseif command == 0x13 then
 					frameinfo = "CaDA - Android - Control"
+                    CaDATools.Decrypt(rawData, 7)
 				else
 					frameinfo = "CaDA - Android - unknown"
 				end
 			else
 				frameinfo = "CaDA - Android - unknown"
 			end
-		end
+
+            if tree and rawData then
+                local tvb = ByteArray.tvb(rawData, frameinfo)
+                local subtree = tree:add(BrickController, tvb(), frameinfo)
+                subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+                subtree:add(tvb( 0, 1), "Id: 0x" .. tvb( 0, 1))
+                subtree:add(tvb( 1, 1), "Cmd: 0x" .. tvb( 1, 1))
+                subtree:add(tvb( 2, 3), "DeviceAddr: 0x" .. tvb( 2, 3))
+                subtree:add(tvb( 5, 3), "AppAddr: 0x" .. tvb( 5, 3))
+                subtree:add(tvb( 8, 2), "Random: 0x" .. tvb( 8, 2))
+                subtree:add(tvb(10, 1), "Channel 1: 0x" .. tvb(10, 1))
+                subtree:add(tvb(11, 1), "Channel 2: 0x" .. tvb(11, 1))
+                subtree:add(tvb(12, 1), "Channel 3: 0x" .. tvb(12, 1))
+            end
+            
+        end
 
 	-- iOS
 	elseif service_flags then
@@ -150,18 +173,18 @@ function BrickController.dissector(buffer, pinfo, tree)
 			
 			local data = buffer(rawDataOffset,rawDataLength)
 			rawData = CryptTools.DecryptRfPayload(SeedArray_MK, 3, resultDataLength, headerOffset, CTXValue1_MK, CTXValue2_MK, data:bytes())
-		end
+
+            if tree and rawData then
+                local tvb = ByteArray.tvb(rawData, frameinfo)
+                local subtree = tree:add(BrickController, tvb(), frameinfo)
+                subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+            end
+        end
 	else
 		return 0
 	end
 
 	pinfo.cols.info = frameinfo
-
-	if tree and rawData then
-		local tvb = ByteArray.tvb(rawData, "decrypted Raw Data")
-		local subtree = tree:add(BrickController, tvb(), frameinfo)
-		subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
-	end
 end
 
 -- Register as a post-dissector; this will run for every frame.
