@@ -37,8 +37,16 @@ function BrickController.dissector(buffer, pinfo, tree)
     -- get advertisingdata
 	local advertisingdata = buffer(29,31):bytes()
 
-	local manufacturerSpecific_flags = advertisingdata:get_index(0) == 0x02 and advertisingdata:get_index(1) == 0x01 and advertisingdata:get_index(2) == 0x02
-	local service_flags = advertisingdata:get_index(0) == 0x02 and advertisingdata:get_index(1) == 0x01 and advertisingdata:get_index(2) == 0x1a
+    -- todo: 
+	local manufacturerSpecific_flags = 
+        advertisingdata:get_index(0) == 0x02 and -- Length: 2
+        advertisingdata:get_index(1) == 0x01 and -- type: Flags (0x01)
+        advertisingdata:get_index(2) == 0x02
+
+    local service_flags = 
+        advertisingdata:get_index(0) == 0x02 and -- Length: 2
+        advertisingdata:get_index(1) == 0x01 and -- type: Flags (0x01)
+        advertisingdata:get_index(2) == 0x1a
 	
 	if not (manufacturerSpecific_flags or service_flags) then 
 		return 0
@@ -50,12 +58,23 @@ function BrickController.dissector(buffer, pinfo, tree)
 
 	-- Android
 	if manufacturerSpecific_flags then
-		local manufacturerSpecific_Company_0xfff0 = advertisingdata:get_index(3) == 0x1b and advertisingdata:get_index(4) == 0xff and advertisingdata:get_index(5) == 0xf0 and advertisingdata:get_index(6) == 0xff
-		local manufacturerSpecific_Company_0xc200 = advertisingdata:get_index(3) == 0x1b and advertisingdata:get_index(4) == 0xff and advertisingdata:get_index(5) == 0x00 and advertisingdata:get_index(6) == 0xc2
+		local manufacturerSpecific_Company_0xfff0 = 
+            advertisingdata:get_index(3) == 0x1b and -- Length: 27
+            advertisingdata:get_index(4) == 0xff and -- type: Manufacturer Specific (0xff) 
+            advertisingdata:get_index(5) == 0xf0 and -- Company Id 0xfff0
+            advertisingdata:get_index(6) == 0xff
+
+        local manufacturerSpecific_Company_0xc200 = 
+            advertisingdata:get_index(3) == 0x1b and -- Length: 27
+            advertisingdata:get_index(4) == 0xff and -- type: Manufacturer Specific (0xff) 
+            advertisingdata:get_index(5) == 0x00 and -- Company Id 0xc200 (CaDA)
+            advertisingdata:get_index(6) == 0xc2
 
 		-- MouldKing
 		if manufacturerSpecific_Company_0xfff0 then
-			local manufacturerSpecific_Connect = advertisingdata:get_index(25) == 0x13 and advertisingdata:get_index(26) == 0x14
+			local manufacturerSpecific_Connect = 
+                advertisingdata:get_index(25) == 0x13 and -- fill bytes
+                advertisingdata:get_index(26) == 0x14
 			
 			local rawDataOffset = 36
 			local rawDataLength = 25
@@ -105,8 +124,13 @@ function BrickController.dissector(buffer, pinfo, tree)
 
 	-- iOS
 	elseif service_flags then
-		local service_Data = advertisingdata:get_index(3) == 0x1b and advertisingdata:get_index(4) == 0x03
-		local service_Connect = advertisingdata:get_index(23) == 0x12 and advertisingdata:get_index(24) == 0x13
+		local service_Data = 
+            advertisingdata:get_index(3) == 0x1b and -- Length: 27
+            advertisingdata:get_index(4) == 0x03     -- type: 16-bit Service Class UUIDs (0x03)
+
+		local service_Connect = 
+            advertisingdata:get_index(23) == 0x12 and -- fill bytes
+            advertisingdata:get_index(24) == 0x13
 
 		if service_Data then
 			local rawDataOffset = 34
