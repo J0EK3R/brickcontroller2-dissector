@@ -7,7 +7,7 @@ local bindir = script:match("(.+)[/\\]")
 package.path = package.path .. ";" .. bindir .. "/?.lua"
 
 -- load modul
-local CryptTools = require("CryptTools")
+local CryptTools = require("Crypt_Tools")
 
 -- Define a new protocol for post-dissector usage.
 local MouldKingDissector = Proto("MouldKing", "Global Frame Analyzer for Bluetooth LE from MouldKing")
@@ -34,105 +34,91 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
     -- advertisingdata starts here
     local advDataOffset = 29
 
-    -- todo: 
-	local manufacturerSpecific_flags = 
-        buffer(advDataOffset + 0,  1):uint() == 0x02 and -- Length: 2
-        buffer(advDataOffset + 1,  1):uint() == 0x01 and -- type: Flags (0x01)
-        buffer(advDataOffset + 2,  1):uint() == 0x02
+	local mouldking_Android_Identifier = 
+        buffer(advDataOffset +  7,  1):uint() == 0x6d and
+        buffer(advDataOffset +  8,  1):uint() == 0xb6 and
+        buffer(advDataOffset +  9,  1):uint() == 0x43 and
+        buffer(advDataOffset + 10,  1):uint() == 0xcf and
+        buffer(advDataOffset + 11,  1):uint() == 0x7e and
+        buffer(advDataOffset + 12,  1):uint() == 0x8f and
+        buffer(advDataOffset + 13,  1):uint() == 0x47 and
+        buffer(advDataOffset + 14,  1):uint() == 0x11
 
-    local service_flags = 
-        buffer(advDataOffset + 0,  1):uint() == 0x02 and -- Length: 2
-        buffer(advDataOffset + 1,  1):uint() == 0x01 and -- type: Flags (0x01)
-        buffer(advDataOffset + 2,  1):uint() == 0x1a
+    local mouldking_iOS_Identifier = 
+        buffer(advDataOffset +  5,  1):uint() == 0xf9 and
+        buffer(advDataOffset +  6,  1):uint() == 0x08 and
+        buffer(advDataOffset +  7,  1):uint() == 0x49 and
+        buffer(advDataOffset +  8,  1):uint() == 0x22 and
+        buffer(advDataOffset +  9,  1):uint() == 0x47 and
+        buffer(advDataOffset + 10,  1):uint() == 0xba and
+        buffer(advDataOffset + 11,  1):uint() == 0xc4 and
+        buffer(advDataOffset + 12,  1):uint() == 0xbc
 	
-	if not (manufacturerSpecific_flags or service_flags) then 
+	if not (mouldking_Android_Identifier or mouldking_iOS_Identifier) then 
 		return 0
 	end
 	
 	local frameinfo = "unknown"
+	local platform = "unknown"
+	local manufacturer = "MouldKing"
 	local datagramname
 	local rawData
+	local rawDataOffset
+	local rawDataLength
+	local headerOffset
+	local resultDataLength = 0
+	local length_is_8
 
 	-- Android
-	if manufacturerSpecific_flags then
-		local manufacturerSpecific_Company_0xfff0 = 
-            buffer(advDataOffset + 3,  1):uint() == 0x1b and -- Length: 27
-            buffer(advDataOffset + 4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-            buffer(advDataOffset + 5,  1):uint() == 0xf0 and -- Company Id 0xfff0
-            buffer(advDataOffset + 6,  1):uint() == 0xff
+	if mouldking_Android_Identifier then
 
-		-- MouldKing
-		if manufacturerSpecific_Company_0xfff0 then
-			local manufacturerSpecific_Connect = 
-                buffer(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
-                buffer(advDataOffset + 26,  1):uint() == 0x14
-			
-			local rawDataOffset = 36
-			local rawDataLength = 25
-			local headerOffset = 15
-			local resultDataLength = 0
-
-			if manufacturerSpecific_Connect then
-				resultDataLength = 8
-				frameinfo = "MK - Android - Connect"
-				datagramname = "Connect-Datagram"
-			else
-				resultDataLength = 10
-				frameinfo = "MK - Android - Control"
-				datagramname = "Control-Datagram"
-			end
-			
-			local data = buffer(rawDataOffset,rawDataLength)
-			rawData = CryptTools.DecryptRfPayload(SeedArray_MK, 3, resultDataLength, headerOffset, CTXValue1_MK, CTXValue2_MK, data:bytes())
-
-            if tree and rawData then
-                local tvb = ByteArray.tvb(rawData, frameinfo)
-                local subtree = tree:add(MouldKingDissector, tvb(), frameinfo)
-                subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
-            end
-			pinfo.cols.info = frameinfo
-        end
+		length_is_8 = 
+			buffer(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+			buffer(advDataOffset + 26,  1):uint() == 0x14
+		
+		platform = "Android"
+		rawDataOffset = advDataOffset + 7
+		rawDataLength = 25
+		headerOffset = 15
 
 	-- iOS
-	elseif service_flags then
+	elseif mouldking_iOS_Identifier then
 
-		local service_Data = 
-            buffer(advDataOffset + 3,  1):uint() == 0x1b and -- Length: 27
-            buffer(advDataOffset + 4,  1):uint() == 0x03     -- type: 16-bit Service Class UUIDs (0x03)
+		length_is_8 = 
+			buffer(advDataOffset + 23,  1):uint() == 0x12 and -- fill bytes
+			buffer(advDataOffset + 24,  1):uint() == 0x13
 
-		if service_Data then
-            local service_Connect = 
-                buffer(advDataOffset + 23, 1):uint() == 0x12 and -- fill bytes
-                buffer(advDataOffset + 24, 1):uint() == 0x13
+		platform = "iOS"
+		rawDataOffset = advDataOffset + 5
+		rawDataLength = 26
+		headerOffset = 13
 
-			local rawDataOffset = 34
-			local rawDataLength = 27
-			local headerOffset = 13
-			local resultDataLength = 0
-
-			if service_Connect then
-				resultDataLength = 8
-				frameinfo = "MK - iOS - Connect"
-				datagramname = "Connect-Datagram"
-			else
-				resultDataLength = 10
-				frameinfo = "MK - iOS - Control"
-				datagramname = "Control-Datagram"
-			end
-			pinfo.cols.info = frameinfo
-			
-			local data = buffer(rawDataOffset,rawDataLength)
-			rawData = CryptTools.DecryptRfPayload(SeedArray_MK, 3, resultDataLength, headerOffset, CTXValue1_MK, CTXValue2_MK, data:bytes())
-
-            if tree and rawData then
-                local tvb = ByteArray.tvb(rawData, frameinfo)
-                local subtree = tree:add(MouldKingDissector, tvb(), frameinfo)
-                subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
-            end
-		end
-	else
-		return 0
 	end
+
+	if length_is_8 then
+		resultDataLength = 8
+		datagramname = "Connect"
+	else
+		resultDataLength = 10
+		datagramname = "Control"
+	end
+	
+	frameinfo = platform .. " - " .. manufacturer .. " - " .. datagramname
+
+	local data = buffer(rawDataOffset,rawDataLength)
+	rawData = CryptTools.DecryptRfPayload(SeedArray_MK, 3, resultDataLength, headerOffset, CTXValue1_MK, CTXValue2_MK, data:bytes())
+
+	if tree and rawData then
+		local tvb1 = ByteArray.tvb(data:bytes(), frameinfo)
+		local subtree1 = tree:add(MouldKingDissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
+		subtree1:add(tvb1(), "Len: " .. tvb1():len())
+
+		local tvb2 = ByteArray.tvb(rawData, frameinfo)
+		local subtree2 = tree:add(MouldKingDissector, tvb2(), platform .. " - " .. manufacturer .. " - decrypted")
+		subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
+	end
+	pinfo.cols.info = frameinfo
+
 end
 
 -- Register as a post-dissector; this will run for every frame.
