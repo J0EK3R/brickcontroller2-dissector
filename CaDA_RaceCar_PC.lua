@@ -27,37 +27,78 @@ function CaDADissector.dissector(buffer, pinfo, tree)
 
 	local length = buffer:len()
 
-    -- check buffer length
-    if not (length == 63 or length == 55) then 
-		return 0
-	end
-
     -- advertisingdata starts here
     local advDataOffset = 29
 
     local cada_Device_Response = 
-        buffer(advDataOffset + 3,  1):uint() == 0x13 and -- Length: 19
-        buffer(advDataOffset + 4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset + 5,  1):uint() == 0xf0 and -- Company Id 0xfff0
-        buffer(advDataOffset + 6,  1):uint() == 0xff and
-        buffer(advDataOffset + 7,  1):uint() == 0x75 and -- CaDA identifier
-        bit.band(buffer(advDataOffset + 8,  1):uint(), 0x40) > 0
+        length == 55 and
+        buffer(advDataOffset +  3,  1):uint() == 0x13 and -- Length: 19
+        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        buffer(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+        buffer(advDataOffset +  6,  1):uint() == 0xff and
+        buffer(advDataOffset +  7,  1):uint() == 0x75 and -- CaDA identifier
+        bit.band(buffer(advDataOffset + 8,  1):uint(), 0x40) > 0 and -- 
+        -- buffer(advDataOffset +  9,  1):uint() == 0x31 and -- DeviceID: 0x31f5e5
+        -- buffer(advDataOffset + 10,  1):uint() == 0xf5 and -- 
+        -- buffer(advDataOffset + 11,  1):uint() == 0xe5 and -- 
+        -- buffer(advDataOffset + 12,  1):uint() == 0x79 and --AppAddr: 0x7929cb
+        -- buffer(advDataOffset + 13,  1):uint() == 0x29 and -- 
+        -- buffer(advDataOffset + 14,  1):uint() == 0xcb and -- 
+        -- buffer(advDataOffset + 15,  1):uint() == 0x00 and -- 
+        -- buffer(advDataOffset + 16,  1):uint() == 0x00 and --
+        -- buffer(advDataOffset + 17,  1):uint() == 0x00 and -- 
+        -- buffer(advDataOffset + 18,  1):uint() == 0x00 and -- 
+        -- buffer(advDataOffset + 19,  1):uint() == 0x00 and -- 
+        -- buffer(advDataOffset + 20,  1):uint() == 0x00 and --
+        -- buffer(advDataOffset + 21,  1):uint() == 0x00 and -- 
+        -- buffer(advDataOffset + 22,  1):uint() == 0x00 and -- 
+        true                                              -- enabled
 
     local cada_Android_Identifier = 
-        buffer(advDataOffset +  7,  1):uint() == 0xee and
-        buffer(advDataOffset +  8,  1):uint() == 0x1b and
-        buffer(advDataOffset +  9,  1):uint() == 0xc8 and
-        buffer(advDataOffset + 10,  1):uint() == 0xaf and
-        buffer(advDataOffset + 11,  1):uint() == 0x9f and
-        buffer(advDataOffset + 12,  1):uint() == 0x3c
+        length == 63 and
+        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        buffer(advDataOffset +  5,  1):uint() == 0x00 and -- Company Id 0xc200
+        buffer(advDataOffset +  6,  1):uint() == 0xc2 and -- 
+        buffer(advDataOffset +  7,  1):uint() == 0xee and -- CaDA identifier
+        buffer(advDataOffset +  8,  1):uint() == 0x1b and --
+        buffer(advDataOffset +  9,  1):uint() == 0xc8 and --
+        buffer(advDataOffset + 10,  1):uint() == 0xaf and --
+        buffer(advDataOffset + 11,  1):uint() == 0x9f and --
+        buffer(advDataOffset + 12,  1):uint() == 0x3c and --
+        true                                              -- enabled
 
     local cada_iOS_Identifier =
-        buffer(advDataOffset +  5,  1):uint() == 0xc0 and
-        buffer(advDataOffset +  6,  1):uint() == 0x3d and
-        buffer(advDataOffset +  7,  1):uint() == 0xca and
-        buffer(advDataOffset +  8,  1):uint() == 0x66 and
-        buffer(advDataOffset +  9,  1):uint() == 0x6d and
-        buffer(advDataOffset + 10,  1):uint() == 0x32
+        length == 63 and
+        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        buffer(advDataOffset +  4,  1):uint() == 0x03 and -- type: Complete List of 16-bit Service Class UUIDs (0x03)
+        buffer(advDataOffset +  5,  1):uint() == 0xc0 and -- Company Id 0xc03d
+        buffer(advDataOffset +  6,  1):uint() == 0x3d and --
+        buffer(advDataOffset +  7,  1):uint() == 0xca and --
+        buffer(advDataOffset +  8,  1):uint() == 0x66 and --
+        buffer(advDataOffset +  9,  1):uint() == 0x6d and --
+        buffer(advDataOffset + 10,  1):uint() == 0x32 and --
+        -- buffer(advDataOffset + 11,  1):uint() == 0xb2 and --
+        -- buffer(advDataOffset + 12,  1):uint() == 0x9e and --
+        -- buffer(advDataOffset + 13,  1):uint() == 0xe3 and --
+        -- buffer(advDataOffset + 14,  1):uint() == 0xa2 and --
+        -- buffer(advDataOffset + 15,  1):uint() == 0x44 and --
+        -- buffer(advDataOffset + 16,  1):uint() == 0x2a and --
+        -- buffer(advDataOffset + 17,  1):uint() == 0xd8 and --
+        -- buffer(advDataOffset + 18,  1):uint() == 0xce and --
+        -- buffer(advDataOffset + 19,  1):uint() == 0x44 and --
+        -- buffer(advDataOffset + 20,  1):uint() == 0x81 and --
+        -- buffer(advDataOffset + 21,  1):uint() == 0x10 and --
+        -- buffer(advDataOffset + 22,  1):uint() == 0x30 and --
+        -- buffer(advDataOffset + 23,  1):uint() == 0x81 and --
+        -- buffer(advDataOffset + 24,  1):uint() == 0x5f and --
+        -- buffer(advDataOffset + 25,  1):uint() == 0xbe and --
+        -- buffer(advDataOffset + 26,  1):uint() == 0x31 and --
+        -- buffer(advDataOffset + 28,  1):uint() == 0x1b and --
+        -- buffer(advDataOffset + 29,  1):uint() == 0x8e and --
+        -- buffer(advDataOffset + 30,  1):uint() == 0x18 and --
+        -- buffer(advDataOffset + 31,  1):uint() == 0x19 and --
+        true                                              -- enabled
 
     if not (cada_Device_Response or cada_Android_Identifier or cada_iOS_Identifier) then 
 		return 0
