@@ -26,25 +26,27 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 	local length = buffer:len()
 
-    -- check buffer length
-    if not (length == 63 or length == 55) then 
-		return 0
-	end
-
     -- advertisingdata starts here
     local advDataOffset = 29
 
 	local mouldking_Android_Identifier = 
-        buffer(advDataOffset +  7,  1):uint() == 0x6d and
+        length == 63 and
+        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        buffer(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+        buffer(advDataOffset +  6,  1):uint() == 0xff and
+        buffer(advDataOffset +  7,  1):uint() == 0x6d and -- MouldKing identifier
         buffer(advDataOffset +  8,  1):uint() == 0xb6 and
         buffer(advDataOffset +  9,  1):uint() == 0x43 and
         buffer(advDataOffset + 10,  1):uint() == 0xcf and
         buffer(advDataOffset + 11,  1):uint() == 0x7e and
         buffer(advDataOffset + 12,  1):uint() == 0x8f and
         buffer(advDataOffset + 13,  1):uint() == 0x47 and
-        buffer(advDataOffset + 14,  1):uint() == 0x11
+        buffer(advDataOffset + 14,  1):uint() == 0x11 and
+        true                                              -- enabled
 
     local mouldking_iOS_Identifier = 
+        length == 55 and
         buffer(advDataOffset +  5,  1):uint() == 0xf9 and
         buffer(advDataOffset +  6,  1):uint() == 0x08 and
         buffer(advDataOffset +  7,  1):uint() == 0x49 and
@@ -52,8 +54,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         buffer(advDataOffset +  9,  1):uint() == 0x47 and
         buffer(advDataOffset + 10,  1):uint() == 0xba and
         buffer(advDataOffset + 11,  1):uint() == 0xc4 and
-        buffer(advDataOffset + 12,  1):uint() == 0xbc
-	
+        buffer(advDataOffset + 12,  1):uint() == 0xbc and
+        true                                              -- enabled
+
 	if not (mouldking_Android_Identifier or mouldking_iOS_Identifier) then 
 		return 0
 	end
@@ -93,20 +96,99 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 		rawDataLength = 26
 		headerOffset = 13
 
+	else
+		return 0
 	end
 
 	if length_is_8 then
 		resultDataLength = 8
-		datagramname = "Connect"
+		datagramname = "8-Byte Payload"
 	else
 		resultDataLength = 10
-		datagramname = "Control"
+		datagramname = "10-Byte Payload"
 	end
 	
-	frameinfo = platform .. " - " .. manufacturer .. " - " .. datagramname
-
 	local data = buffer(rawDataOffset,rawDataLength)
 	rawData = CryptTools.DecryptRfPayload(SeedArray_MK, 3, resultDataLength, headerOffset, CTXValue1_MK, CTXValue2_MK, data:bytes())
+
+	if rawData then
+		local command = rawData:get_index(0)
+		
+		-- MK2.0
+		-- MK3.0
+		-- MK4.0D
+		-- MK8.0
+		if command == 0xaa then
+			-- MK2.0   aa 7b a7 00 00 00 00 55
+			-- MK3.0   aa 7b a7 00 00 00 00 55
+			-- MK4.0D  aa 7b a7 00 00 00 00 55
+			-- MK8.0   aa 7b a7 00 00 00 00 55
+
+			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Connect"
+		elseif command == 0x66 then
+			-- MK2.0   66 7b a7 80 80 80 80 99
+			-- MK3.0   66 7b a7 80 80 80 80 99
+			-- MK4.0D  66 7b a7 80 80 80 80 99
+			-- MK8.0   66 7b a7 80 80 80 80 99
+
+			datagramname = "MK2.0/MK3.0/MK8.0 Command"
+		elseif command == 0x77 then
+			-- MK4.0D  77 7b a7 00 00 00 00 88
+
+			datagramname = "MK4.0D Command"
+		
+		-- MK3.8
+		elseif command == 0xB1 then
+			-- MK3.8   b1 7b a7 80 80 80 4f c1
+
+			datagramname = "MK3.8 Connect"
+		elseif command == 0x81 then
+			-- MK3.8   81 7b 00 99 99 99 99 99 99 c2
+
+			datagramname = "MK3.8 Command"
+		
+		-- MK4.0
+		-- MK5.0 
+		-- 4P Blade 4.0
+		elseif command == 0xad then
+			-- MK4.0   ad 7b a7 80 80 80 4f 52
+			-- MK5.0   ad 7b a7 80 80 80 4f 52
+
+			datagramname = "MK4.0/MK5.0 Connect"
+		elseif command == 0x7d then
+			-- MK4.0   7d 7b a7 88 88 88 88 88 88 82
+			-- MK5.0   7d 7b a7 00 00 80 80 80 80 82
+
+			datagramname = "MK4.0/MK5.0 Command"
+		
+		-- MK6.0
+		-- Mecanum
+		-- 4P Blade 6.0
+		elseif command == 0x6d then
+			-- MK6.0   6d 7b a7 80 80 80 80 92
+			-- Mecanum 6d 7b a7 80 80 80 80 92
+
+			datagramname = "MK6.0 Connect"
+		elseif command == 0x61 then
+			-- MK6.0[1]   61 7b a7 80 80 80 80 80 80 9e
+			-- Mecanum    61 7b a7 80 80 80 80 80 80 9e
+
+			datagramname = "MK6.0[1] Command"
+		elseif command == 0x62 then
+			-- MK6.0[2]   62 7b a7 80 80 01 80 80 80 9d
+
+			datagramname = "MK6.0[2] Command"
+		elseif command == 0x63 then
+			-- MK6.0[3]   63 7b a7 80 80 80 80 80 80 9c
+
+			datagramname = "MK6.0[3] Command"
+
+		else
+			datagramname = string.format("unknown - 0x%02x", command)
+		end
+	end
+
+    frameinfo = platform .. " - " .. manufacturer .. " - " .. datagramname
 
 	if tree and rawData then
 		local tvb1 = ByteArray.tvb(data:bytes(), frameinfo)
