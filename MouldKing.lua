@@ -124,27 +124,35 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK4.0D  aa 7b a7 00 00 00 00 55
 			-- MK8.0   aa 7b a7 00 00 00 00 55
 
+			manufacturer = "MouldKing"
 			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Connect"
+
 		elseif command == 0x66 then
 			-- MK2.0   66 7b a7 80 80 80 80 99
 			-- MK3.0   66 7b a7 80 80 80 80 99
 			-- MK4.0D  66 7b a7 80 80 80 80 99
 			-- MK8.0   66 7b a7 80 80 80 80 99
 
-			datagramname = "MK2.0/MK3.0/MK8.0 Command"
+			manufacturer = "MouldKing"
+			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Command"
+
 		elseif command == 0x77 then
 			-- MK4.0D  77 7b a7 00 00 00 00 88
 
+			manufacturer = "MouldKing"
 			datagramname = "MK4.0D Command"
 		
 		-- MK3.8
 		elseif command == 0xB1 then
 			-- MK3.8   b1 7b a7 80 80 80 4f c1
 
+			manufacturer = "MouldKing"
 			datagramname = "MK3.8 Connect"
+
 		elseif command == 0x81 then
 			-- MK3.8   81 7b 00 99 99 99 99 99 99 c2
 
+			manufacturer = "MouldKing"
 			datagramname = "MK3.8 Command"
 		
 		-- MK4.0
@@ -154,11 +162,14 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK4.0   ad 7b a7 80 80 80 4f 52
 			-- MK5.0   ad 7b a7 80 80 80 4f 52
 
+			manufacturer = "MouldKing"
 			datagramname = "MK4.0/MK5.0 Connect"
+			
 		elseif command == 0x7d then
 			-- MK4.0   7d 7b a7 88 88 88 88 88 88 82
 			-- MK5.0   7d 7b a7 00 00 80 80 80 80 82
 
+			manufacturer = "MouldKing"
 			datagramname = "MK4.0/MK5.0 Command"
 		
 		-- MK6.0
@@ -168,23 +179,79 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK6.0   6d 7b a7 80 80 80 80 92
 			-- Mecanum 6d 7b a7 80 80 80 80 92
 
+			manufacturer = "MouldKing"
 			datagramname = "MK6.0 Connect"
+
 		elseif command == 0x61 then
 			-- MK6.0[1]   61 7b a7 80 80 80 80 80 80 9e
 			-- Mecanum    61 7b a7 80 80 80 80 80 80 9e
-
+			
+			manufacturer = "MouldKing"
 			datagramname = "MK6.0[1] Command"
+			
 		elseif command == 0x62 then
 			-- MK6.0[2]   62 7b a7 80 80 01 80 80 80 9d
 
+			manufacturer = "MouldKing"
 			datagramname = "MK6.0[2] Command"
+			
 		elseif command == 0x63 then
 			-- MK6.0[3]   63 7b a7 80 80 80 80 80 80 9c
 
+			manufacturer = "MouldKing"
 			datagramname = "MK6.0[3] Command"
 
+		elseif command == 0xa4 then
+			local _3rd = rawData:get_index(3)
+
+			if _3rd == 0x00 then
+				-- JIE-STAR 8CH   a4 1d 74 00 00 00 00 5b
+
+				manufacturer = "JIE-STAR"
+				datagramname = "JIE-STAR 8CH Connect"
+
+			elseif _3rd == 0x80 then
+				-- JIE-STAR 4CH   a4 1d 74 80 80 80 80 5b
+
+				manufacturer = "JIE-STAR"
+				datagramname = "JIE-STAR 4CH Connect"
+				
+			else
+
+				manufacturer = "JIE-STAR"
+				datagramname = string.format("unknown - 0x%02x", command)
+				
+			end
+
+		elseif command == 0x40 then
+			-- JIE-STAR 4CH   40 1d 74 80 80 80 80 bf
+
+			manufacturer = "JIE-STAR"
+			datagramname = "JIE-STAR 4CH[1] Command"
+			
+		elseif command == 0x41 then
+			-- JIE-STAR 8CH   41 1d 74 00 00 00 00 bf
+
+			manufacturer = "JIE-STAR"
+			datagramname = "JIE-STAR 8CH[1] Command"
+			
+		elseif command == 0x42 then
+			-- JIE-STAR 8CH   42 1d 74 00 00 00 00 be
+
+			manufacturer = "JIE-STAR"
+			datagramname = "JIE-STAR 8CH[2] Command"
+			
+		elseif command == 0x43 then
+			-- JIE-STAR 8CH   43 1d 74 00 00 00 00 bd
+
+			manufacturer = "JIE-STAR"
+			datagramname = "JIE-STAR 8CH[3] Command"
+			
 		else
+
+			manufacturer = "Unknown"
 			datagramname = string.format("unknown - 0x%02x", command)
+
 		end
 	end
 
