@@ -12,10 +12,15 @@ local CryptTools = require("Crypt_Tools")
 -- Define a new protocol for post-dissector usage.
 local MouldKingDissector = Proto("MouldKing", "Global Frame Analyzer for Bluetooth LE from MouldKing")
 
-local HeaderArray = { 0x71, 0x0f, 0x55 }
 local SeedArray_MK = { 0xC1, 0xC2, 0xC3, 0xC4, 0xC5 }
 local CTXValue1_MK = 0x3f
 local CTXValue2_MK = 0x25
+
+local SeedArray_JS = { 0xC1, 0xC2, 0xC3, 0xC4, 0xC5 }
+local CTXValue1_JS = 0x3f
+local CTXValue2_JS_1 = 0x25
+local CTXValue2_JS_2 = 0x26
+local CTXValue2_JS_3 = 0x27
 
 function MouldKingDissector.dissector(buffer, pinfo, tree)
 
@@ -45,6 +50,38 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         buffer(advDataOffset + 14,  1):uint() == 0x11 and
         true                                              -- enabled
 
+	local jiestar_Android_EE_Identifier = 
+        length == 63 and
+        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        buffer(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+        buffer(advDataOffset +  6,  1):uint() == 0xff and
+        buffer(advDataOffset +  7,  1):uint() == 0xee and -- JieStar identifier
+        buffer(advDataOffset +  8,  1):uint() == 0x1b and
+        buffer(advDataOffset +  9,  1):uint() == 0xc8 and
+        buffer(advDataOffset + 10,  1):uint() == 0x46 and
+        buffer(advDataOffset + 11,  1):uint() == 0x3e and
+        buffer(advDataOffset + 12,  1):uint() == 0x3d and
+        buffer(advDataOffset + 13,  1):uint() == 0xfb and
+        buffer(advDataOffset + 14,  1):uint() == 0xd2 and
+        true                                              -- enabled
+
+	local jiestar_Android_6F_Identifier = 
+        length == 63 and
+        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        buffer(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+        buffer(advDataOffset +  6,  1):uint() == 0xff and
+        buffer(advDataOffset +  7,  1):uint() == 0x6f and -- JieStar identifier
+        buffer(advDataOffset +  8,  1):uint() == 0x7f and
+        buffer(advDataOffset +  9,  1):uint() == 0xb1 and
+        buffer(advDataOffset + 10,  1):uint() == 0xc1 and
+        buffer(advDataOffset + 11,  1):uint() == 0x01 and
+        buffer(advDataOffset + 12,  1):uint() == 0x53 and
+        buffer(advDataOffset + 13,  1):uint() == 0x6f and
+        buffer(advDataOffset + 14,  1):uint() == 0x6c and
+        true                                              -- enabled
+
     local mouldking_iOS_Identifier = 
         length == 55 and
         buffer(advDataOffset +  5,  1):uint() == 0xf9 and
@@ -57,7 +94,10 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         buffer(advDataOffset + 12,  1):uint() == 0xbc and
         true                                              -- enabled
 
-	if not (mouldking_Android_Identifier or mouldking_iOS_Identifier) then 
+	if not (mouldking_Android_Identifier or 
+		jiestar_Android_EE_Identifier or
+		jiestar_Android_6F_Identifier or
+		mouldking_iOS_Identifier) then 
 		return 0
 	end
 	
@@ -71,6 +111,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 	local headerOffset
 	local resultDataLength = 0
 	local length_is_8
+	local seedArray
+	local ctxValue1
+	local ctxValue2
 
 	-- Android
 	if mouldking_Android_Identifier then
@@ -83,6 +126,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 		rawDataOffset = advDataOffset + 7
 		rawDataLength = 25
 		headerOffset = 15
+		seedArray = SeedArray_MK
+		ctxValue1 = CTXValue1_MK
+		ctxValue2 = CTXValue2_MK
 
 	-- iOS
 	elseif mouldking_iOS_Identifier then
@@ -95,6 +141,39 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 		rawDataOffset = advDataOffset + 5
 		rawDataLength = 26
 		headerOffset = 13
+		seedArray = SeedArray_MK
+		ctxValue1 = CTXValue1_MK
+		ctxValue2 = CTXValue2_MK
+
+	-- Android
+	elseif jiestar_Android_EE_Identifier then
+
+		length_is_8 = 
+			buffer(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+			buffer(advDataOffset + 26,  1):uint() == 0x14
+		
+		platform = "Android"
+		rawDataOffset = advDataOffset + 7
+		rawDataLength = 25
+		headerOffset = 15
+		seedArray = SeedArray_JS
+		ctxValue1 = CTXValue1_JS
+		ctxValue2 = CTXValue2_JS_2
+
+	elseif jiestar_Android_6F_Identifier then
+
+		length_is_8 = 
+			buffer(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+			buffer(advDataOffset + 26,  1):uint() == 0x14
+		
+		manufacturer = "JieStarRaw"
+		platform = "Android"
+		rawDataOffset = advDataOffset + 7
+		rawDataLength = 25
+		headerOffset = 15
+		seedArray = SeedArray_JS
+		ctxValue1 = CTXValue1_JS
+		ctxValue2 = CTXValue2_JS_3
 
 	else
 		return 0
@@ -107,14 +186,16 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 		resultDataLength = 10
 		datagramname = "10-Byte Payload"
 	end
-	
+
 	local data = buffer(rawDataOffset,rawDataLength)
-	rawData = CryptTools.DecryptRfPayload(SeedArray_MK, 3, resultDataLength, headerOffset, CTXValue1_MK, CTXValue2_MK, data:bytes())
+	rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
 
 	if rawData then
 		local command = rawData:get_index(0)
 		local commandLength = rawData:len()
 		
+		datagramname = datagramname .. " - Command: " .. string.format("0x%02x", command) .. " - Length: " .. commandLength
+
 		-- MK2.0
 		-- MK3.0
 		-- MK4.0D
@@ -263,9 +344,23 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 			elseif _3rd == 0x80 then
 				-- JIE-STAR 4CH   a4 1d 74 80 80 80 80 5b
+				
+				if mouldking_Android_Identifier then
 
-				manufacturer = "JIE-STAR"
-				datagramname = "JIE-STAR 4CH Connect"
+					manufacturer = "JIE-STAR"
+					datagramname = "JIE-STAR 4CH[1] Connect"
+				
+				elseif jiestar_Android_EE_Identifier then
+
+					manufacturer = "JIE-STAR"
+					datagramname = "JIE-STAR 4CH[2] Connect"
+
+				elseif jiestar_Android_6F_Identifier then
+
+					manufacturer = "JIE-STAR"
+					datagramname = "JIE-STAR 4CH[3] Connect"
+
+				end
 				
 			else
 
@@ -278,12 +373,34 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 	        command == 0x40 then
 			-- JIE-STAR 4CH   40 1d 74 80 80 80 80 bf
 
-			manufacturer = "JIE-STAR"
-			datagramname = "JIE-STAR 4CH Command -" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
+			if mouldking_Android_Identifier then
+
+				manufacturer = "JIE-STAR"
+				datagramname = "JIE-STAR 4CH[1] Command -" ..
+					string.format(" %02x", rawData:get_index(3)) ..
+					string.format(" %02x", rawData:get_index(4)) ..
+					string.format(" %02x", rawData:get_index(5)) ..
+					string.format(" %02x", rawData:get_index(6))
+			
+			elseif jiestar_Android_EE_Identifier then
+
+				manufacturer = "JIE-STAR"
+				datagramname = "JIE-STAR 4CH[2] Command -" ..
+					string.format(" %02x", rawData:get_index(3)) ..
+					string.format(" %02x", rawData:get_index(4)) ..
+					string.format(" %02x", rawData:get_index(5)) ..
+					string.format(" %02x", rawData:get_index(6))
+			
+			elseif jiestar_Android_6F_Identifier then
+
+				manufacturer = "JIE-STAR"
+				datagramname = "JIE-STAR 4CH[3] Command -" ..
+					string.format(" %02x", rawData:get_index(3)) ..
+					string.format(" %02x", rawData:get_index(4)) ..
+					string.format(" %02x", rawData:get_index(5)) ..
+					string.format(" %02x", rawData:get_index(6))
+
+			end
 			
 		elseif commandLength == 8 and
 	        command == 0x41 then
@@ -324,6 +441,11 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			datagramname = string.format("unknown - 0x%02x", command)
 
 		end
+	
+	else
+
+		datagramname = "Decryption failed"
+
 	end
 
     frameinfo = platform .. " - " .. manufacturer .. " - " .. datagramname
