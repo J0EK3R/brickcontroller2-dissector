@@ -26,25 +26,44 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
 	local length = buffer:len()
 
     -- advertisingdata starts here
-    local advDataOffset = 29
-
+    local advDataOffset_Android = 29
 	local powerbox_Android_Identifier = 
         length == 57 and
-        buffer(advDataOffset +  3,  1):uint() == 0x15 and -- Length: 21
-        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset +  5,  1):uint() == 0x00 and -- Company Id 0xff00
-        buffer(advDataOffset +  6,  1):uint() == 0xff and
-        buffer(advDataOffset +  7,  1):uint() == 0x6d and -- Identifier
-        buffer(advDataOffset +  8,  1):uint() == 0xb6 and
-        buffer(advDataOffset +  9,  1):uint() == 0x43 and
-        buffer(advDataOffset + 10,  1):uint() == 0xcf and
-        buffer(advDataOffset + 11,  1):uint() == 0x7e and
-        buffer(advDataOffset + 12,  1):uint() == 0x8f and
-        buffer(advDataOffset + 13,  1):uint() == 0x47 and
-        buffer(advDataOffset + 14,  1):uint() == 0x11 and
+        buffer(advDataOffset_Android +  3,  1):uint() == 0x15 and -- Length: 21
+        buffer(advDataOffset_Android +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        buffer(advDataOffset_Android +  5,  1):uint() == 0x00 and -- Company Id 0xff00
+        buffer(advDataOffset_Android +  6,  1):uint() == 0xff and
+        buffer(advDataOffset_Android +  7,  1):uint() == 0x6d and -- Identifier
+        buffer(advDataOffset_Android +  8,  1):uint() == 0xb6 and
+        buffer(advDataOffset_Android +  9,  1):uint() == 0x43 and
+        buffer(advDataOffset_Android + 10,  1):uint() == 0xcf and
+        buffer(advDataOffset_Android + 11,  1):uint() == 0x7e and
+        buffer(advDataOffset_Android + 12,  1):uint() == 0x8f and
+        buffer(advDataOffset_Android + 13,  1):uint() ==
         true                                              -- enabled
 
-	if not (powerbox_Android_Identifier) then 
+    local advDataOffset_Windows = 26
+	local powerbox_Windows_Identifier = 
+        length == 62 and
+        buffer(advDataOffset_Windows +  3,  1):uint() == 0x1d and -- Length: 29
+        buffer(advDataOffset_Windows +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        buffer(advDataOffset_Windows +  5,  1):uint() == 0x00 and -- Company Id 0xff00
+        buffer(advDataOffset_Windows +  6,  1):uint() == 0xff and
+        buffer(advDataOffset_Windows +  7,  1):uint() == 0x00 and
+        buffer(advDataOffset_Windows +  8,  1):uint() == 0x00 and
+        buffer(advDataOffset_Windows +  9,  1):uint() == 0x00 and
+        buffer(advDataOffset_Windows + 10,  1):uint() == 0x6d and -- Identifier
+        buffer(advDataOffset_Windows + 11,  1):uint() == 0xb6 and
+        buffer(advDataOffset_Windows + 12,  1):uint() == 0x43 and
+        buffer(advDataOffset_Windows + 13,  1):uint() == 0xcf and
+        -- buffer(advDataOffset_Windows + 14,  1):uint() == 0x7e and
+        -- buffer(advDataOffset_Windows + 15,  1):uint() == 0x8f and
+        -- buffer(advDataOffset_Windows + 13,  1):uint() == 0x47 and
+        -- buffer(advDataOffset_Windows + 14,  1):uint() == 0x11 and
+        true                                              -- enabled
+
+	if not (powerbox_Android_Identifier or
+			powerbox_Windows_Identifier) then 
 		return 0
 	end
 
@@ -65,14 +84,26 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
 	if powerbox_Android_Identifier then
 		
 		platform = "Android"
-		rawDataOffset = advDataOffset + 7
+		rawDataOffset = advDataOffset_Android + 7
 		rawDataLength = 19
 		headerOffset = 15
 		seedArray = SeedArray
 		ctxValue1 = CTXValue1
 		ctxValue2 = CTXValue2
 
+	-- Windows
+	elseif powerbox_Windows_Identifier then
+		
+		platform = "Windows"
+		rawDataOffset = advDataOffset_Windows + 10
+		rawDataLength = 18
+		headerOffset = 15
+		seedArray = SeedArray
+		ctxValue1 = CTXValue1
+		ctxValue2 = CTXValue2
+
 	else
+
 		return 0
 	end
 
