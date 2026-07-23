@@ -50,6 +50,18 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         buffer(advDataOffset + 14,  1):uint() == 0x11 and
         true                                              -- enabled
 
+    local mouldking_iOS_Identifier = 
+        length == 55 and
+        buffer(advDataOffset +  5,  1):uint() == 0xf9 and
+        buffer(advDataOffset +  6,  1):uint() == 0x08 and
+        buffer(advDataOffset +  7,  1):uint() == 0x49 and
+        buffer(advDataOffset +  8,  1):uint() == 0x22 and
+        buffer(advDataOffset +  9,  1):uint() == 0x47 and
+        buffer(advDataOffset + 10,  1):uint() == 0xba and
+        buffer(advDataOffset + 11,  1):uint() == 0xc4 and
+        buffer(advDataOffset + 12,  1):uint() == 0xbc and
+        true                                              -- enabled
+
 	local jiestar_Android_EE_Identifier = 
         length == 63 and
         buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
@@ -80,18 +92,6 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         buffer(advDataOffset + 12,  1):uint() == 0x53 and
         buffer(advDataOffset + 13,  1):uint() == 0x6f and
         buffer(advDataOffset + 14,  1):uint() == 0x6c and
-        true                                              -- enabled
-
-    local mouldking_iOS_Identifier = 
-        length == 55 and
-        buffer(advDataOffset +  5,  1):uint() == 0xf9 and
-        buffer(advDataOffset +  6,  1):uint() == 0x08 and
-        buffer(advDataOffset +  7,  1):uint() == 0x49 and
-        buffer(advDataOffset +  8,  1):uint() == 0x22 and
-        buffer(advDataOffset +  9,  1):uint() == 0x47 and
-        buffer(advDataOffset + 10,  1):uint() == 0xba and
-        buffer(advDataOffset + 11,  1):uint() == 0xc4 and
-        buffer(advDataOffset + 12,  1):uint() == 0xbc and
         true                                              -- enabled
 
 	if not (mouldking_Android_Identifier or 

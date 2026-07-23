@@ -62,8 +62,26 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
         -- buffer(advDataOffset_Windows + 14,  1):uint() == 0x11 and
         true                                              -- enabled
 
+		
+    local advDataOffset_iOS = 29
+	local powerbox_iOS_Identifier = 
+        length == 58 and
+        buffer(advDataOffset_iOS +  6,  1):uint() == 0x13 and -- Length: 19
+        buffer(advDataOffset_iOS +  7,  1):uint() == 0x03 and -- type: 16-bit Service Class UUIDs (0x03)
+        buffer(advDataOffset_iOS +  8,  1):uint() == 0xc8 and
+        -- buffer(advDataOffset_iOS +  8,  1):uint() == 0x19 and
+        -- buffer(advDataOffset_iOS +  9,  1):uint() == 0x00 and
+        -- buffer(advDataOffset_iOS + 10,  1):uint() == 0x00 and
+        -- buffer(advDataOffset_iOS + 11,  1):uint() == 0x00 and
+        -- buffer(advDataOffset_iOS + 12,  1):uint() == 0x6d and -- Identifier
+        -- buffer(advDataOffset_iOS + 13,  1):uint() == 0xb6 and
+        -- buffer(advDataOffset_iOS + 14,  1):uint() == 0x43 and
+        -- buffer(advDataOffset_iOS + 15,  1):uint() == 0xcf and
+        true                                              -- enabled
+
 	if not (powerbox_Android_Identifier or
-			powerbox_Windows_Identifier) then 
+			powerbox_Windows_Identifier or
+			powerbox_iOS_Identifier) then 
 		return 0
 	end
 
@@ -98,6 +116,17 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
 		rawDataOffset = advDataOffset_Windows + 10
 		rawDataLength = 18
 		headerOffset = 15
+		seedArray = SeedArray
+		ctxValue1 = CTXValue1
+		ctxValue2 = CTXValue2
+
+	-- iOS
+	elseif powerbox_iOS_Identifier then
+		
+		platform = "iOS"
+		rawDataOffset = advDataOffset_iOS + 8
+		rawDataLength = 18
+		headerOffset = 16
 		seedArray = SeedArray
 		ctxValue1 = CTXValue1
 		ctxValue2 = CTXValue2
