@@ -39,7 +39,7 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
         buffer(advDataOffset_Android + 10,  1):uint() == 0xcf and
         buffer(advDataOffset_Android + 11,  1):uint() == 0x7e and
         buffer(advDataOffset_Android + 12,  1):uint() == 0x8f and
-        buffer(advDataOffset_Android + 13,  1):uint() ==
+        buffer(advDataOffset_Android + 13,  1):uint() == 0x47 and
         true                                              -- enabled
 
     local advDataOffset_Windows = 26
