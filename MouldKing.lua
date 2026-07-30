@@ -208,7 +208,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK8.0   aa 7b a7 00 00 00 00 55
 
 			manufacturer = "MouldKing"
-			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Connect"
+			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Connect -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
 		elseif commandLength == 8 and
 			command == 0x66 then
@@ -218,7 +220,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK8.0   66 7b a7 80 80 80 80 99
 
 			manufacturer = "MouldKing"
-			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Command" ..
+			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -229,7 +233,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK4.0D  77 7b a7 00 00 00 00 88
 
 			manufacturer = "MouldKing"
-			datagramname = "MK4.0D Command" ..
+			datagramname = "MK4.0D Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -241,14 +247,18 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK3.8   b1 7b a7 80 80 80 4f c1
 
 			manufacturer = "MouldKing"
-			datagramname = "MK3.8 Connect"
+			datagramname = "MK3.8 Connect -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
 		elseif commandLength == 10 and
 			command == 0x81 then
 			-- MK3.8   81 7b 00 99 99 99 99 99 99 c2
 
 			manufacturer = "MouldKing"
-			datagramname = "MK3.8 Command" ..
+			datagramname = "MK3.8 Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -265,7 +275,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK5.0   ad 7b a7 80 80 80 4f 52
 
 			manufacturer = "MouldKing"
-			datagramname = "MK4.0/MK5.0 Connect"
+			datagramname = "MK4.0/MK5.0 Connect -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 			
 		elseif commandLength == 10 and
 			command == 0x7d then
@@ -273,7 +285,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK5.0   7d 7b a7 00 00 80 80 80 80 82
 
 			manufacturer = "MouldKing"
-			datagramname = "MK4.0/MK5.0 Command" ..
+			datagramname = "MK4.0/MK5.0 Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -290,7 +304,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- Mecanum 6d 7b a7 80 80 80 80 92
 
 			manufacturer = "MouldKing"
-			datagramname = "MK6.0 Connect"
+			datagramname = "MK6.0 Connect -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
 		elseif commandLength == 10 and
 			command == 0x61 then
@@ -298,7 +314,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- Mecanum    61 7b a7 80 80 80 80 80 80 9e
 			
 			manufacturer = "MouldKing"
-			datagramname = "MK6.0[1] Command" ..
+			datagramname = "MK6.0[1] Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -311,7 +329,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK6.0[2]   62 7b a7 80 80 01 80 80 80 9d
 
 			manufacturer = "MouldKing"
-			datagramname = "MK6.0[2] Command" ..
+			datagramname = "MK6.0[2] Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -324,7 +344,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 			-- MK6.0[3]   63 7b a7 80 80 80 80 80 80 9c
 
 			manufacturer = "MouldKing"
-			datagramname = "MK6.0[3] Command" ..
+			datagramname = "MK6.0[3] Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -340,7 +362,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 				-- JIE-STAR 8CH   a4 1d 74 00 00 00 00 5b
 
 				manufacturer = "JIE-STAR"
-				datagramname = "JIE-STAR 8CH Connect"
+				datagramname = "JIE-STAR 8CH Connect -" ..
+					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
 			elseif _3rd == 0x80 then
 				-- JIE-STAR 4CH   a4 1d 74 80 80 80 80 5b
@@ -348,25 +372,32 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 				if mouldking_Android_Identifier then
 
 					manufacturer = "JIE-STAR"
-					datagramname = "JIE-STAR 4CH[1] Connect"
+					datagramname = "JIE-STAR 4CH[1] Connect -" ..
+						" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+						" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 				
 				elseif jiestar_Android_EE_Identifier then
 
 					manufacturer = "JIE-STAR"
-					datagramname = "JIE-STAR 4CH[2] Connect"
+					datagramname = "JIE-STAR 4CH[2] Connect -" ..
+						" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+						" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
 				elseif jiestar_Android_6F_Identifier then
 
 					manufacturer = "JIE-STAR"
-					datagramname = "JIE-STAR 4CH[3] Connect"
+					datagramname = "JIE-STAR 4CH[3] Connect -" ..
+						" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+						" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
 				end
 				
 			else
 
 				manufacturer = "JIE-STAR"
-				datagramname = string.format("unknown - 0x%02x", command)
-				
+				datagramname = "JIE-STAR unknown -" ..
+					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"				
 			end
 
 		elseif commandLength == 8 and 
@@ -377,6 +408,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 				manufacturer = "JIE-STAR"
 				datagramname = "JIE-STAR 4CH[1] Command -" ..
+					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 					string.format(" %02x", rawData:get_index(3)) ..
 					string.format(" %02x", rawData:get_index(4)) ..
 					string.format(" %02x", rawData:get_index(5)) ..
@@ -386,6 +419,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 				manufacturer = "JIE-STAR"
 				datagramname = "JIE-STAR 4CH[2] Command -" ..
+					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 					string.format(" %02x", rawData:get_index(3)) ..
 					string.format(" %02x", rawData:get_index(4)) ..
 					string.format(" %02x", rawData:get_index(5)) ..
@@ -395,6 +430,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 				manufacturer = "JIE-STAR"
 				datagramname = "JIE-STAR 4CH[3] Command -" ..
+					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 					string.format(" %02x", rawData:get_index(3)) ..
 					string.format(" %02x", rawData:get_index(4)) ..
 					string.format(" %02x", rawData:get_index(5)) ..
@@ -408,6 +445,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 			manufacturer = "JIE-STAR"
 			datagramname = "JIE-STAR 8CH[1] Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -419,6 +458,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 			manufacturer = "JIE-STAR"
 			datagramname = "JIE-STAR 8CH[2] Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -430,6 +471,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
 			manufacturer = "JIE-STAR"
 			datagramname = "JIE-STAR 8CH[3] Command -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
@@ -438,7 +481,9 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 		else
 
 			manufacturer = "Unknown"
-			datagramname = string.format("unknown - 0x%02x", command)
+			datagramname = "Unknown -" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
 		end
 	

@@ -148,12 +148,16 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
 		if command == 0xa4 then
 
 			manufacturer = "PowerBox"
-			datagramname = "Connect"
+			datagramname = "Connect" ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 			
 		elseif command == 0x40 then
 
 			manufacturer = "PowerBox"
-			datagramname = "Command" ..
+			datagramname = "Command"  ..
+				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
 				string.format(" %02x", rawData:get_index(3)) ..
 				string.format(" %02x", rawData:get_index(4)) ..
 				string.format(" %02x", rawData:get_index(5)) ..
