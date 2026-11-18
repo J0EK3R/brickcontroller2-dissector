@@ -1,0 +1,11 @@
+# .editorconfig - code style of this repository (https://editorconfig.org).
+# All Lua, Python and shell files use 4 spaces for indentation, LF line endings and no tabs.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4

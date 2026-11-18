@@ -35,10 +35,10 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
     -- advertisingdata starts here (relative to the access address)
     local advDataOffset = BleTools.ADV_DATA_OFFSET
 
-	local mouldking_Android_Identifier = 
+    local mouldking_Android_Identifier =
         advLen == 31 and
         ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff)
         ll(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
         ll(advDataOffset +  6,  1):uint() == 0xff and
         ll(advDataOffset +  7,  1):uint() == 0x6d and -- MouldKing identifier
@@ -51,7 +51,7 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         ll(advDataOffset + 14,  1):uint() == 0x11 and
         true                                              -- enabled
 
-    local mouldking_iOS_Identifier = 
+    local mouldking_iOS_Identifier =
         advLen == 23 and
         ll(advDataOffset +  5,  1):uint() == 0xf9 and
         ll(advDataOffset +  6,  1):uint() == 0x08 and
@@ -63,10 +63,10 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         ll(advDataOffset + 12,  1):uint() == 0xbc and
         true                                              -- enabled
 
-	local jiestar_Android_EE_Identifier = 
+    local jiestar_Android_EE_Identifier =
         advLen == 31 and
         ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff)
         ll(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
         ll(advDataOffset +  6,  1):uint() == 0xff and
         ll(advDataOffset +  7,  1):uint() == 0xee and -- JieStar identifier
@@ -79,10 +79,10 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         ll(advDataOffset + 14,  1):uint() == 0xd2 and
         true                                              -- enabled
 
-	local jiestar_Android_6F_Identifier = 
+    local jiestar_Android_6F_Identifier =
         advLen == 31 and
         ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff)
         ll(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
         ll(advDataOffset +  6,  1):uint() == 0xff and
         ll(advDataOffset +  7,  1):uint() == 0x6f and -- JieStar identifier
@@ -95,417 +95,417 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
         ll(advDataOffset + 14,  1):uint() == 0x6c and
         true                                              -- enabled
 
-	if not (mouldking_Android_Identifier or 
-		jiestar_Android_EE_Identifier or
-		jiestar_Android_6F_Identifier or
-		mouldking_iOS_Identifier) then 
-		return 0
-	end
-	
-	local frameinfo = "unknown"
-	local platform = "unknown"
-	local manufacturer = "MouldKing"
-	local datagramname
-	local rawData
-	local rawDataOffset
-	local rawDataLength
-	local headerOffset
-	local resultDataLength = 0
-	local length_is_8
-	local seedArray
-	local ctxValue1
-	local ctxValue2
+    if not (mouldking_Android_Identifier or
+        jiestar_Android_EE_Identifier or
+        jiestar_Android_6F_Identifier or
+        mouldking_iOS_Identifier) then
+        return 0
+    end
 
-	-- Android
-	if mouldking_Android_Identifier then
+    local frameinfo = "unknown"
+    local platform = "unknown"
+    local manufacturer = "MouldKing"
+    local datagramname
+    local rawData
+    local rawDataOffset
+    local rawDataLength
+    local headerOffset
+    local resultDataLength = 0
+    local length_is_8
+    local seedArray
+    local ctxValue1
+    local ctxValue2
 
-		length_is_8 = 
-			ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
-			ll(advDataOffset + 26,  1):uint() == 0x14
-		
-		platform = "Android"
-		rawDataOffset = advDataOffset + 7
-		rawDataLength = 25
-		headerOffset = 15
-		seedArray = SeedArray_MK
-		ctxValue1 = CTXValue1_MK
-		ctxValue2 = CTXValue2_MK
+    -- Android
+    if mouldking_Android_Identifier then
 
-	-- iOS
-	elseif mouldking_iOS_Identifier then
+        length_is_8 =
+            ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+            ll(advDataOffset + 26,  1):uint() == 0x14
 
-		length_is_8 = 
-			ll(advDataOffset + 23,  1):uint() == 0x12 and -- fill bytes
-			ll(advDataOffset + 24,  1):uint() == 0x13
+        platform = "Android"
+        rawDataOffset = advDataOffset + 7
+        rawDataLength = 25
+        headerOffset = 15
+        seedArray = SeedArray_MK
+        ctxValue1 = CTXValue1_MK
+        ctxValue2 = CTXValue2_MK
 
-		platform = "iOS"
-		rawDataOffset = advDataOffset + 5
-		rawDataLength = 26
-		headerOffset = 13
-		seedArray = SeedArray_MK
-		ctxValue1 = CTXValue1_MK
-		ctxValue2 = CTXValue2_MK
+    -- iOS
+    elseif mouldking_iOS_Identifier then
 
-	-- Android
-	elseif jiestar_Android_EE_Identifier then
+        length_is_8 =
+            ll(advDataOffset + 23,  1):uint() == 0x12 and -- fill bytes
+            ll(advDataOffset + 24,  1):uint() == 0x13
 
-		length_is_8 = 
-			ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
-			ll(advDataOffset + 26,  1):uint() == 0x14
-		
-		platform = "Android"
-		rawDataOffset = advDataOffset + 7
-		rawDataLength = 25
-		headerOffset = 15
-		seedArray = SeedArray_JS
-		ctxValue1 = CTXValue1_JS
-		ctxValue2 = CTXValue2_JS_2
+        platform = "iOS"
+        rawDataOffset = advDataOffset + 5
+        rawDataLength = 26
+        headerOffset = 13
+        seedArray = SeedArray_MK
+        ctxValue1 = CTXValue1_MK
+        ctxValue2 = CTXValue2_MK
 
-	elseif jiestar_Android_6F_Identifier then
+    -- Android
+    elseif jiestar_Android_EE_Identifier then
 
-		length_is_8 = 
-			ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
-			ll(advDataOffset + 26,  1):uint() == 0x14
-		
-		manufacturer = "JieStarRaw"
-		platform = "Android"
-		rawDataOffset = advDataOffset + 7
-		rawDataLength = 25
-		headerOffset = 15
-		seedArray = SeedArray_JS
-		ctxValue1 = CTXValue1_JS
-		ctxValue2 = CTXValue2_JS_3
+        length_is_8 =
+            ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+            ll(advDataOffset + 26,  1):uint() == 0x14
 
-	else
-		return 0
-	end
+        platform = "Android"
+        rawDataOffset = advDataOffset + 7
+        rawDataLength = 25
+        headerOffset = 15
+        seedArray = SeedArray_JS
+        ctxValue1 = CTXValue1_JS
+        ctxValue2 = CTXValue2_JS_2
 
-	if length_is_8 then
-		resultDataLength = 8
-		datagramname = "8-Byte Payload"
-	else
-		resultDataLength = 10
-		datagramname = "10-Byte Payload"
-	end
+    elseif jiestar_Android_6F_Identifier then
 
-	local data = ll(rawDataOffset,rawDataLength)
-	rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
+        length_is_8 =
+            ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+            ll(advDataOffset + 26,  1):uint() == 0x14
 
-	if rawData then
-		local command = rawData:get_index(0)
-		local commandLength = rawData:len()
-		
-		datagramname = datagramname .. " - Command: " .. string.format("0x%02x", command) .. " - Length: " .. commandLength
+        manufacturer = "JieStarRaw"
+        platform = "Android"
+        rawDataOffset = advDataOffset + 7
+        rawDataLength = 25
+        headerOffset = 15
+        seedArray = SeedArray_JS
+        ctxValue1 = CTXValue1_JS
+        ctxValue2 = CTXValue2_JS_3
 
-		-- MK2.0
-		-- MK3.0
-		-- MK4.0D
-		-- MK8.0
-		if commandLength == 8 and
-			command == 0xaa then
-			-- MK2.0   aa 7b a7 00 00 00 00 55
-			-- MK3.0   aa 7b a7 00 00 00 00 55
-			-- MK4.0D  aa 7b a7 00 00 00 00 55
-			-- MK8.0   aa 7b a7 00 00 00 00 55
+    else
+        return 0
+    end
 
-			manufacturer = "MouldKing"
-			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Connect -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+    if length_is_8 then
+        resultDataLength = 8
+        datagramname = "8-Byte Payload"
+    else
+        resultDataLength = 10
+        datagramname = "10-Byte Payload"
+    end
 
-		elseif commandLength == 8 and
-			command == 0x66 then
-			-- MK2.0   66 7b a7 80 80 80 80 99
-			-- MK3.0   66 7b a7 80 80 80 80 99
-			-- MK4.0D  66 7b a7 80 80 80 80 99
-			-- MK8.0   66 7b a7 80 80 80 80 99
+    local data = ll(rawDataOffset,rawDataLength)
+    rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
 
-			manufacturer = "MouldKing"
-			datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
+    if rawData then
+        local command = rawData:get_index(0)
+        local commandLength = rawData:len()
 
-		elseif commandLength == 8 and
-			command == 0x77 then
-			-- MK4.0D  77 7b a7 00 00 00 00 88
+        datagramname = datagramname .. " - Command: " .. string.format("0x%02x", command) .. " - Length: " .. commandLength
 
-			manufacturer = "MouldKing"
-			datagramname = "MK4.0D Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
-		
-		-- MK3.8
-		elseif commandLength == 8 and
-			command == 0xB1 then
-			-- MK3.8   b1 7b a7 80 80 80 4f c1
+        -- MK2.0
+        -- MK3.0
+        -- MK4.0D
+        -- MK8.0
+        if commandLength == 8 and
+            command == 0xaa then
+            -- MK2.0   aa 7b a7 00 00 00 00 55
+            -- MK3.0   aa 7b a7 00 00 00 00 55
+            -- MK4.0D  aa 7b a7 00 00 00 00 55
+            -- MK8.0   aa 7b a7 00 00 00 00 55
 
-			manufacturer = "MouldKing"
-			datagramname = "MK3.8 Connect -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+            manufacturer = "MouldKing"
+            datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Connect -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-		elseif commandLength == 10 and
-			command == 0x81 then
-			-- MK3.8   81 7b 00 99 99 99 99 99 99 c2
+        elseif commandLength == 8 and
+            command == 0x66 then
+            -- MK2.0   66 7b a7 80 80 80 80 99
+            -- MK3.0   66 7b a7 80 80 80 80 99
+            -- MK4.0D  66 7b a7 80 80 80 80 99
+            -- MK8.0   66 7b a7 80 80 80 80 99
 
-			manufacturer = "MouldKing"
-			datagramname = "MK3.8 Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6)) ..
-				string.format(" %02x", rawData:get_index(7)) ..
-				string.format(" %02x", rawData:get_index(8))
-		
-		-- MK4.0
-		-- MK5.0 
-		-- 4P Blade 4.0
-		elseif commandLength == 8 and
-			command == 0xad then
-			-- MK4.0   ad 7b a7 80 80 80 4f 52
-			-- MK5.0   ad 7b a7 80 80 80 4f 52
+            manufacturer = "MouldKing"
+            datagramname = "MK2.0/MK3.0/MK4.0D/MK8.0 Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6))
 
-			manufacturer = "MouldKing"
-			datagramname = "MK4.0/MK5.0 Connect -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
-			
-		elseif commandLength == 10 and
-			command == 0x7d then
-			-- MK4.0   7d 7b a7 88 88 88 88 88 88 82
-			-- MK5.0   7d 7b a7 00 00 80 80 80 80 82
+        elseif commandLength == 8 and
+            command == 0x77 then
+            -- MK4.0D  77 7b a7 00 00 00 00 88
 
-			manufacturer = "MouldKing"
-			datagramname = "MK4.0/MK5.0 Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6)) ..
-				string.format(" %02x", rawData:get_index(7)) ..
-				string.format(" %02x", rawData:get_index(8))
-		
-		-- MK6.0
-		-- Mecanum
-		-- 4P Blade 6.0
-		elseif commandLength == 8 and
-			command == 0x6d then
-			-- MK6.0   6d 7b a7 80 80 80 80 92
-			-- Mecanum 6d 7b a7 80 80 80 80 92
+            manufacturer = "MouldKing"
+            datagramname = "MK4.0D Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6))
 
-			manufacturer = "MouldKing"
-			datagramname = "MK6.0 Connect -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+        -- MK3.8
+        elseif commandLength == 8 and
+            command == 0xB1 then
+            -- MK3.8   b1 7b a7 80 80 80 4f c1
 
-		elseif commandLength == 10 and
-			command == 0x61 then
-			-- MK6.0[1]   61 7b a7 80 80 80 80 80 80 9e
-			-- Mecanum    61 7b a7 80 80 80 80 80 80 9e
-			
-			manufacturer = "MouldKing"
-			datagramname = "MK6.0[1] Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6)) ..
-				string.format(" %02x", rawData:get_index(7)) ..
-				string.format(" %02x", rawData:get_index(8))
-			
-		elseif commandLength == 10 and
-			command == 0x62 then
-			-- MK6.0[2]   62 7b a7 80 80 01 80 80 80 9d
+            manufacturer = "MouldKing"
+            datagramname = "MK3.8 Connect -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-			manufacturer = "MouldKing"
-			datagramname = "MK6.0[2] Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6)) ..
-				string.format(" %02x", rawData:get_index(7)) ..
-				string.format(" %02x", rawData:get_index(8))
+        elseif commandLength == 10 and
+            command == 0x81 then
+            -- MK3.8   81 7b 00 99 99 99 99 99 99 c2
 
-		elseif commandLength == 10 and
-			command == 0x63 then
-			-- MK6.0[3]   63 7b a7 80 80 80 80 80 80 9c
+            manufacturer = "MouldKing"
+            datagramname = "MK3.8 Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6)) ..
+                string.format(" %02x", rawData:get_index(7)) ..
+                string.format(" %02x", rawData:get_index(8))
 
-			manufacturer = "MouldKing"
-			datagramname = "MK6.0[3] Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6)) ..
-				string.format(" %02x", rawData:get_index(7)) ..
-				string.format(" %02x", rawData:get_index(8))
+        -- MK4.0
+        -- MK5.0
+        -- 4P Blade 4.0
+        elseif commandLength == 8 and
+            command == 0xad then
+            -- MK4.0   ad 7b a7 80 80 80 4f 52
+            -- MK5.0   ad 7b a7 80 80 80 4f 52
 
-		elseif commandLength == 8 and
-			command == 0xa4 then
-			local _3rd = rawData:get_index(3)
+            manufacturer = "MouldKing"
+            datagramname = "MK4.0/MK5.0 Connect -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-			if _3rd == 0x00 then
-				-- JIE-STAR 8CH   a4 1d 74 00 00 00 00 5b
+        elseif commandLength == 10 and
+            command == 0x7d then
+            -- MK4.0   7d 7b a7 88 88 88 88 88 88 82
+            -- MK5.0   7d 7b a7 00 00 80 80 80 80 82
 
-				manufacturer = "JIE-STAR"
-				datagramname = "JIE-STAR 8CH Connect -" ..
-					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+            manufacturer = "MouldKing"
+            datagramname = "MK4.0/MK5.0 Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6)) ..
+                string.format(" %02x", rawData:get_index(7)) ..
+                string.format(" %02x", rawData:get_index(8))
 
-			elseif _3rd == 0x80 then
-				-- JIE-STAR 4CH   a4 1d 74 80 80 80 80 5b
-				
-				if mouldking_Android_Identifier then
+        -- MK6.0
+        -- Mecanum
+        -- 4P Blade 6.0
+        elseif commandLength == 8 and
+            command == 0x6d then
+            -- MK6.0   6d 7b a7 80 80 80 80 92
+            -- Mecanum 6d 7b a7 80 80 80 80 92
 
-					manufacturer = "JIE-STAR"
-					datagramname = "JIE-STAR 4CH[1] Connect -" ..
-						" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-						" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
-				
-				elseif jiestar_Android_EE_Identifier then
+            manufacturer = "MouldKing"
+            datagramname = "MK6.0 Connect -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-					manufacturer = "JIE-STAR"
-					datagramname = "JIE-STAR 4CH[2] Connect -" ..
-						" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-						" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+        elseif commandLength == 10 and
+            command == 0x61 then
+            -- MK6.0[1]   61 7b a7 80 80 80 80 80 80 9e
+            -- Mecanum    61 7b a7 80 80 80 80 80 80 9e
 
-				elseif jiestar_Android_6F_Identifier then
+            manufacturer = "MouldKing"
+            datagramname = "MK6.0[1] Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6)) ..
+                string.format(" %02x", rawData:get_index(7)) ..
+                string.format(" %02x", rawData:get_index(8))
 
-					manufacturer = "JIE-STAR"
-					datagramname = "JIE-STAR 4CH[3] Connect -" ..
-						" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-						" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+        elseif commandLength == 10 and
+            command == 0x62 then
+            -- MK6.0[2]   62 7b a7 80 80 01 80 80 80 9d
 
-				end
-				
-			else
+            manufacturer = "MouldKing"
+            datagramname = "MK6.0[2] Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6)) ..
+                string.format(" %02x", rawData:get_index(7)) ..
+                string.format(" %02x", rawData:get_index(8))
 
-				manufacturer = "JIE-STAR"
-				datagramname = "JIE-STAR unknown -" ..
-					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"				
-			end
+        elseif commandLength == 10 and
+            command == 0x63 then
+            -- MK6.0[3]   63 7b a7 80 80 80 80 80 80 9c
 
-		elseif commandLength == 8 and 
-	        command == 0x40 then
-			-- JIE-STAR 4CH   40 1d 74 80 80 80 80 bf
+            manufacturer = "MouldKing"
+            datagramname = "MK6.0[3] Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6)) ..
+                string.format(" %02x", rawData:get_index(7)) ..
+                string.format(" %02x", rawData:get_index(8))
 
-			if mouldking_Android_Identifier then
+        elseif commandLength == 8 and
+            command == 0xa4 then
+            local _3rd = rawData:get_index(3)
 
-				manufacturer = "JIE-STAR"
-				datagramname = "JIE-STAR 4CH[1] Command -" ..
-					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-					string.format(" %02x", rawData:get_index(3)) ..
-					string.format(" %02x", rawData:get_index(4)) ..
-					string.format(" %02x", rawData:get_index(5)) ..
-					string.format(" %02x", rawData:get_index(6))
-			
-			elseif jiestar_Android_EE_Identifier then
+            if _3rd == 0x00 then
+                -- JIE-STAR 8CH   a4 1d 74 00 00 00 00 5b
 
-				manufacturer = "JIE-STAR"
-				datagramname = "JIE-STAR 4CH[2] Command -" ..
-					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-					string.format(" %02x", rawData:get_index(3)) ..
-					string.format(" %02x", rawData:get_index(4)) ..
-					string.format(" %02x", rawData:get_index(5)) ..
-					string.format(" %02x", rawData:get_index(6))
-			
-			elseif jiestar_Android_6F_Identifier then
+                manufacturer = "JIE-STAR"
+                datagramname = "JIE-STAR 8CH Connect -" ..
+                    " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                    " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-				manufacturer = "JIE-STAR"
-				datagramname = "JIE-STAR 4CH[3] Command -" ..
-					" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-					" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-					string.format(" %02x", rawData:get_index(3)) ..
-					string.format(" %02x", rawData:get_index(4)) ..
-					string.format(" %02x", rawData:get_index(5)) ..
-					string.format(" %02x", rawData:get_index(6))
+            elseif _3rd == 0x80 then
+                -- JIE-STAR 4CH   a4 1d 74 80 80 80 80 5b
 
-			end
-			
-		elseif commandLength == 8 and
-	        command == 0x41 then
-			-- JIE-STAR 8CH   41 34 17 00 00 00 00 bf
+                if mouldking_Android_Identifier then
 
-			manufacturer = "JIE-STAR"
-			datagramname = "JIE-STAR 8CH[1] Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
-			
-		elseif commandLength == 8 and
-	        command == 0x42 then
-			-- JIE-STAR 8CH   42 34 17 00 00 00 00 be
+                    manufacturer = "JIE-STAR"
+                    datagramname = "JIE-STAR 4CH[1] Connect -" ..
+                        " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                        " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-			manufacturer = "JIE-STAR"
-			datagramname = "JIE-STAR 8CH[2] Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
-			
-		elseif commandLength == 8 and
-	        command == 0x43 then
-			-- JIE-STAR 8CH   43 34 17 00 00 00 00 bd
+                elseif jiestar_Android_EE_Identifier then
 
-			manufacturer = "JIE-STAR"
-			datagramname = "JIE-STAR 8CH[3] Command -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
-			
-		else
+                    manufacturer = "JIE-STAR"
+                    datagramname = "JIE-STAR 4CH[2] Connect -" ..
+                        " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                        " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-			manufacturer = "Unknown"
-			datagramname = "Unknown -" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+                elseif jiestar_Android_6F_Identifier then
 
-		end
-	
-	else
+                    manufacturer = "JIE-STAR"
+                    datagramname = "JIE-STAR 4CH[3] Connect -" ..
+                        " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                        " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-		datagramname = "Decryption failed"
+                end
 
-	end
+            else
+
+                manufacturer = "JIE-STAR"
+                datagramname = "JIE-STAR unknown -" ..
+                    " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                    " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+            end
+
+        elseif commandLength == 8 and
+            command == 0x40 then
+            -- JIE-STAR 4CH   40 1d 74 80 80 80 80 bf
+
+            if mouldking_Android_Identifier then
+
+                manufacturer = "JIE-STAR"
+                datagramname = "JIE-STAR 4CH[1] Command -" ..
+                    " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                    " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                    string.format(" %02x", rawData:get_index(3)) ..
+                    string.format(" %02x", rawData:get_index(4)) ..
+                    string.format(" %02x", rawData:get_index(5)) ..
+                    string.format(" %02x", rawData:get_index(6))
+
+            elseif jiestar_Android_EE_Identifier then
+
+                manufacturer = "JIE-STAR"
+                datagramname = "JIE-STAR 4CH[2] Command -" ..
+                    " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                    " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                    string.format(" %02x", rawData:get_index(3)) ..
+                    string.format(" %02x", rawData:get_index(4)) ..
+                    string.format(" %02x", rawData:get_index(5)) ..
+                    string.format(" %02x", rawData:get_index(6))
+
+            elseif jiestar_Android_6F_Identifier then
+
+                manufacturer = "JIE-STAR"
+                datagramname = "JIE-STAR 4CH[3] Command -" ..
+                    " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                    " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                    string.format(" %02x", rawData:get_index(3)) ..
+                    string.format(" %02x", rawData:get_index(4)) ..
+                    string.format(" %02x", rawData:get_index(5)) ..
+                    string.format(" %02x", rawData:get_index(6))
+
+            end
+
+        elseif commandLength == 8 and
+            command == 0x41 then
+            -- JIE-STAR 8CH   41 34 17 00 00 00 00 bf
+
+            manufacturer = "JIE-STAR"
+            datagramname = "JIE-STAR 8CH[1] Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6))
+
+        elseif commandLength == 8 and
+            command == 0x42 then
+            -- JIE-STAR 8CH   42 34 17 00 00 00 00 be
+
+            manufacturer = "JIE-STAR"
+            datagramname = "JIE-STAR 8CH[2] Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6))
+
+        elseif commandLength == 8 and
+            command == 0x43 then
+            -- JIE-STAR 8CH   43 34 17 00 00 00 00 bd
+
+            manufacturer = "JIE-STAR"
+            datagramname = "JIE-STAR 8CH[3] Command -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6))
+
+        else
+
+            manufacturer = "Unknown"
+            datagramname = "Unknown -" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
+
+        end
+
+    else
+
+        datagramname = "Decryption failed"
+
+    end
 
     frameinfo = platform .. " - " .. manufacturer .. " - " .. datagramname
 
-	if tree and rawData then
-		local tvb1 = ByteArray.tvb(data:bytes(), frameinfo)
-		local subtree1 = tree:add(MouldKingDissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
-		subtree1:add(tvb1(), "Len: " .. tvb1():len())
+    if tree and rawData then
+        local tvb1 = ByteArray.tvb(data:bytes(), frameinfo)
+        local subtree1 = tree:add(MouldKingDissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
+        subtree1:add(tvb1(), "Len: " .. tvb1():len())
 
-		local tvb2 = ByteArray.tvb(rawData, frameinfo)
-		local subtree2 = tree:add(MouldKingDissector, tvb2(), platform .. " - " .. manufacturer .. " - decrypted")
-		subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
-	end
-	pinfo.cols.info = frameinfo
+        local tvb2 = ByteArray.tvb(rawData, frameinfo)
+        local subtree2 = tree:add(MouldKingDissector, tvb2(), platform .. " - " .. manufacturer .. " - decrypted")
+        subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
+    end
+    pinfo.cols.info = frameinfo
 
 end
 

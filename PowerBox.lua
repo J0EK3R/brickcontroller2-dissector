@@ -27,10 +27,10 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
     end
 
     local advDataOffset_Android = BleTools.ADV_DATA_OFFSET
-	local powerbox_Android_Identifier = 
+    local powerbox_Android_Identifier =
         advLen == 25 and
         ll(advDataOffset_Android +  3,  1):uint() == 0x15 and -- Length: 21
-        ll(advDataOffset_Android +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset_Android +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff)
         ll(advDataOffset_Android +  5,  1):uint() == 0x00 and -- Company Id 0xff00
         ll(advDataOffset_Android +  6,  1):uint() == 0xff and
         ll(advDataOffset_Android +  7,  1):uint() == 0x6d and -- Identifier
@@ -46,10 +46,10 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
     -- advertising data start. The checks below are written with a "+ 3" shift like the
     -- other variants, so the base is a virtual one: 3 bytes BEFORE the real data start.
     local advDataOffset_Windows = BleTools.ADV_DATA_OFFSET - 3
-	local powerbox_Windows_Identifier = 
+    local powerbox_Windows_Identifier =
         advLen == 30 and
         ll(advDataOffset_Windows +  3,  1):uint() == 0x1d and -- Length: 29
-        ll(advDataOffset_Windows +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset_Windows +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff)
         ll(advDataOffset_Windows +  5,  1):uint() == 0x00 and -- Company Id 0xff00
         ll(advDataOffset_Windows +  6,  1):uint() == 0xff and
         ll(advDataOffset_Windows +  7,  1):uint() == 0x00 and
@@ -65,9 +65,9 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
         -- ll(advDataOffset_Windows + 14,  1):uint() == 0x11 and
         true                                              -- enabled
 
-		
+
     local advDataOffset_iOS = BleTools.ADV_DATA_OFFSET
-	local powerbox_iOS_Identifier = 
+    local powerbox_iOS_Identifier =
         advLen == 26 and
         ll(advDataOffset_iOS +  6,  1):uint() == 0x13 and -- Length: 19
         ll(advDataOffset_iOS +  7,  1):uint() == 0x03 and -- type: 16-bit Service Class UUIDs (0x03)
@@ -82,115 +82,115 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
         -- ll(advDataOffset_iOS + 15,  1):uint() == 0xcf and
         true                                              -- enabled
 
-	if not (powerbox_Android_Identifier or
-			powerbox_Windows_Identifier or
-			powerbox_iOS_Identifier) then 
-		return 0
-	end
+    if not (powerbox_Android_Identifier or
+            powerbox_Windows_Identifier or
+            powerbox_iOS_Identifier) then
+        return 0
+    end
 
-	local frameinfo = "unknown"
-	local platform = "unknown"
-	local manufacturer = "PowerBox"
-	local datagramname = "8-Byte Payload"
-	local rawData
-	local rawDataOffset
-	local rawDataLength
-	local headerOffset
-	local resultDataLength = 8
-	local seedArray
-	local ctxValue1
-	local ctxValue2
+    local frameinfo = "unknown"
+    local platform = "unknown"
+    local manufacturer = "PowerBox"
+    local datagramname = "8-Byte Payload"
+    local rawData
+    local rawDataOffset
+    local rawDataLength
+    local headerOffset
+    local resultDataLength = 8
+    local seedArray
+    local ctxValue1
+    local ctxValue2
 
-	-- Android
-	if powerbox_Android_Identifier then
-		
-		platform = "Android"
-		rawDataOffset = advDataOffset_Android + 7
-		rawDataLength = 19
-		headerOffset = 15
-		seedArray = SeedArray
-		ctxValue1 = CTXValue1
-		ctxValue2 = CTXValue2
+    -- Android
+    if powerbox_Android_Identifier then
 
-	-- Windows
-	elseif powerbox_Windows_Identifier then
-		
-		platform = "Windows"
-		rawDataOffset = advDataOffset_Windows + 10
-		rawDataLength = 18
-		headerOffset = 15
-		seedArray = SeedArray
-		ctxValue1 = CTXValue1
-		ctxValue2 = CTXValue2
+        platform = "Android"
+        rawDataOffset = advDataOffset_Android + 7
+        rawDataLength = 19
+        headerOffset = 15
+        seedArray = SeedArray
+        ctxValue1 = CTXValue1
+        ctxValue2 = CTXValue2
 
-	-- iOS
-	elseif powerbox_iOS_Identifier then
-		
-		platform = "iOS"
-		rawDataOffset = advDataOffset_iOS + 8
-		rawDataLength = 18
-		headerOffset = 16
-		seedArray = SeedArray
-		ctxValue1 = CTXValue1
-		ctxValue2 = CTXValue2
+    -- Windows
+    elseif powerbox_Windows_Identifier then
 
-	else
+        platform = "Windows"
+        rawDataOffset = advDataOffset_Windows + 10
+        rawDataLength = 18
+        headerOffset = 15
+        seedArray = SeedArray
+        ctxValue1 = CTXValue1
+        ctxValue2 = CTXValue2
 
-		return 0
-	end
+    -- iOS
+    elseif powerbox_iOS_Identifier then
 
-	local data = ll(rawDataOffset,rawDataLength)
-	rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
+        platform = "iOS"
+        rawDataOffset = advDataOffset_iOS + 8
+        rawDataLength = 18
+        headerOffset = 16
+        seedArray = SeedArray
+        ctxValue1 = CTXValue1
+        ctxValue2 = CTXValue2
 
-	if rawData then
-		local command = rawData:get_index(0)
-		local commandLength = rawData:len()
-		
-		datagramname = datagramname .. " - Command: " .. string.format("0x%02x", command) .. " - Length: " .. commandLength
+    else
 
-		if command == 0xa4 then
+        return 0
+    end
 
-			manufacturer = "PowerBox"
-			datagramname = "Connect" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
-			
-		elseif command == 0x40 then
+    local data = ll(rawDataOffset,rawDataLength)
+    rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
 
-			manufacturer = "PowerBox"
-			datagramname = "Command"  ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
-			
-		else
+    if rawData then
+        local command = rawData:get_index(0)
+        local commandLength = rawData:len()
 
-			manufacturer = "Unknown"
-			datagramname = string.format("unknown - 0x%02x", command)
+        datagramname = datagramname .. " - Command: " .. string.format("0x%02x", command) .. " - Length: " .. commandLength
 
-		end
-	
-	else
+        if command == 0xa4 then
 
-		datagramname = "Decryption failed"
+            manufacturer = "PowerBox"
+            datagramname = "Connect" ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
 
-	end
+        elseif command == 0x40 then
+
+            manufacturer = "PowerBox"
+            datagramname = "Command"  ..
+                " Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
+                " ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
+                string.format(" %02x", rawData:get_index(3)) ..
+                string.format(" %02x", rawData:get_index(4)) ..
+                string.format(" %02x", rawData:get_index(5)) ..
+                string.format(" %02x", rawData:get_index(6))
+
+        else
+
+            manufacturer = "Unknown"
+            datagramname = string.format("unknown - 0x%02x", command)
+
+        end
+
+    else
+
+        datagramname = "Decryption failed"
+
+    end
 
     frameinfo = platform .. " - " .. manufacturer .. " - " .. datagramname
 
-	if tree and rawData then
-		local tvb1 = ByteArray.tvb(data:bytes(), frameinfo)
-		local subtree1 = tree:add(PowerBoxDissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
-		subtree1:add(tvb1(), "Len: " .. tvb1():len())
+    if tree and rawData then
+        local tvb1 = ByteArray.tvb(data:bytes(), frameinfo)
+        local subtree1 = tree:add(PowerBoxDissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
+        subtree1:add(tvb1(), "Len: " .. tvb1():len())
 
-		local tvb2 = ByteArray.tvb(rawData, frameinfo)
-		local subtree2 = tree:add(PowerBoxDissector, tvb2(), platform .. " - " .. manufacturer .. " - decrypted")
-		subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
-	end
-	pinfo.cols.info = frameinfo
+        local tvb2 = ByteArray.tvb(rawData, frameinfo)
+        local subtree2 = tree:add(PowerBoxDissector, tvb2(), platform .. " - " .. manufacturer .. " - decrypted")
+        subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
+    end
+    pinfo.cols.info = frameinfo
 
 end
 

@@ -31,36 +31,36 @@ function CaDADissector.dissector(buffer, pinfo, tree)
     -- advertisingdata starts here (relative to the access address)
     local advDataOffset = BleTools.ADV_DATA_OFFSET
 
-    local cada_Device_Response = 
+    local cada_Device_Response =
         advLen == 23 and
         ll(advDataOffset +  3,  1):uint() == 0x13 and -- Length: 19
-        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff)
         ll(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
         ll(advDataOffset +  6,  1):uint() == 0xff and
         ll(advDataOffset +  7,  1):uint() == 0x75 and -- CaDA identifier
-        bit.band(ll(advDataOffset + 8,  1):uint(), 0x40) > 0 and -- 
+        bit.band(ll(advDataOffset + 8,  1):uint(), 0x40) > 0 and --
         -- ll(advDataOffset +  9,  1):uint() == 0x31 and -- DeviceID: 0x31f5e5
-        -- ll(advDataOffset + 10,  1):uint() == 0xf5 and -- 
-        -- ll(advDataOffset + 11,  1):uint() == 0xe5 and -- 
+        -- ll(advDataOffset + 10,  1):uint() == 0xf5 and --
+        -- ll(advDataOffset + 11,  1):uint() == 0xe5 and --
         -- ll(advDataOffset + 12,  1):uint() == 0x79 and --AppAddr: 0x7929cb
-        -- ll(advDataOffset + 13,  1):uint() == 0x29 and -- 
-        -- ll(advDataOffset + 14,  1):uint() == 0xcb and -- 
-        -- ll(advDataOffset + 15,  1):uint() == 0x00 and -- 
+        -- ll(advDataOffset + 13,  1):uint() == 0x29 and --
+        -- ll(advDataOffset + 14,  1):uint() == 0xcb and --
+        -- ll(advDataOffset + 15,  1):uint() == 0x00 and --
         -- ll(advDataOffset + 16,  1):uint() == 0x00 and --
-        -- ll(advDataOffset + 17,  1):uint() == 0x00 and -- 
-        -- ll(advDataOffset + 18,  1):uint() == 0x00 and -- 
-        -- ll(advDataOffset + 19,  1):uint() == 0x00 and -- 
+        -- ll(advDataOffset + 17,  1):uint() == 0x00 and --
+        -- ll(advDataOffset + 18,  1):uint() == 0x00 and --
+        -- ll(advDataOffset + 19,  1):uint() == 0x00 and --
         -- ll(advDataOffset + 20,  1):uint() == 0x00 and --
-        -- ll(advDataOffset + 21,  1):uint() == 0x00 and -- 
-        -- ll(advDataOffset + 22,  1):uint() == 0x00 and -- 
+        -- ll(advDataOffset + 21,  1):uint() == 0x00 and --
+        -- ll(advDataOffset + 22,  1):uint() == 0x00 and --
         true                                              -- enabled
 
-    local cada_Android_Identifier = 
+    local cada_Android_Identifier =
         advLen == 31 and
         ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff)
         ll(advDataOffset +  5,  1):uint() == 0x00 and -- Company Id 0xc200
-        ll(advDataOffset +  6,  1):uint() == 0xc2 and -- 
+        ll(advDataOffset +  6,  1):uint() == 0xc2 and --
         ll(advDataOffset +  7,  1):uint() == 0xee and -- CaDA identifier
         ll(advDataOffset +  8,  1):uint() == 0x1b and --
         ll(advDataOffset +  9,  1):uint() == 0xc8 and --
@@ -101,9 +101,9 @@ function CaDADissector.dissector(buffer, pinfo, tree)
         -- ll(advDataOffset + 31,  1):uint() == 0x19 and --
         true                                              -- enabled
 
-    if not (cada_Device_Response or cada_Android_Identifier or cada_iOS_Identifier) then 
-		return 0
-	end
+    if not (cada_Device_Response or cada_Android_Identifier or cada_iOS_Identifier) then
+        return 0
+    end
 
     local manufacturer = "CaDA"
 
@@ -118,7 +118,7 @@ function CaDADissector.dissector(buffer, pinfo, tree)
 
         frameinfo = platform .. " - " .. manufacturer .." - " .. datagramname
         pinfo.cols.info = frameinfo
-     
+
         rawData = ll(rawDataOffset,rawDataLength):bytes()
 
         if tree and rawData then
@@ -148,8 +148,8 @@ function CaDADissector.dissector(buffer, pinfo, tree)
 
             rawDataOffset = advDataOffset + 7
             rawDataLength = 24
-    		headerOffset = 15
-    		platform = "Android"
+            headerOffset = 15
+            platform = "Android"
             resultDataLength = 16
 
         -- iOS
@@ -157,10 +157,10 @@ function CaDADissector.dissector(buffer, pinfo, tree)
 
             rawDataOffset = advDataOffset + 5
             rawDataLength = 24
-    		headerOffset = 13
-    		platform = "iOS"
+            headerOffset = 13
+            platform = "iOS"
             resultDataLength = 16
-            
+
         end
 
         local data = ll(rawDataOffset,rawDataLength)
@@ -169,20 +169,20 @@ function CaDADissector.dissector(buffer, pinfo, tree)
         if rawData:get_index(0) == 0x75 then
 
             local command = rawData:get_index(1)
-            
+
             if command == 0x10 then
 
-        		datagramname = "Connect"
+                datagramname = "Connect"
 
             elseif command == 0x13 then
 
-        		datagramname = "Control"
+                datagramname = "Control"
                 CaDATools.Decrypt(rawData, 7)
 
             else
 
-        		datagramname = "unknown"
-                
+                datagramname = "unknown"
+
             end
         end
 

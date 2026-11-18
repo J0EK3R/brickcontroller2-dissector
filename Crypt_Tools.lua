@@ -205,7 +205,7 @@ function CryptTools.DecryptRfPayload(seed, headerLength, dataLength, headerOffse
     local resultBufferLength = checksumOffset + checksumLength
 
     local resultBuffer = {}
-	
+
     for i = 0, resultBufferLength - 1 do
         resultBuffer[i] = 0
     end
@@ -243,8 +243,8 @@ function CryptTools.DecryptRfPayload(seed, headerLength, dataLength, headerOffse
 
     -- Extract data.
     local dataOut = ByteArray.new()
-	dataOut:set_size(dataLength)
-	
+    dataOut:set_size(dataLength)
+
     for i = 0, dataLength - 1 do
         dataOut:set_index(i, resultBuffer[dataOffset + i])
     end
