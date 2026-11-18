@@ -42,3 +42,5 @@ luac.out
 # Visual Studio 2015 cache/options directory
 .vs/
 
+__pycache__/
+*.pyc

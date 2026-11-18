@@ -7,6 +7,7 @@ local bindir = script:match("(.+)[/\\]")
 package.path = package.path .. ";" .. bindir .. "/?.lua"
 
 -- load modul
+local BleTools = require("BLE_Tools")
 local CryptTools = require("Crypt_Tools")
 
 -- Define a new protocol for post-dissector usage.
@@ -18,65 +19,67 @@ local CTXValue2 = 0x25
 
 function PowerBoxDissector.dissector(buffer, pinfo, tree)
 
-    -- check protocol string
-	if not tostring(pinfo.cols.protocol) == "LE LL" then
-		return 0
-	end
+    -- locate the BLE link layer packet (independent of the capture link type);
+    -- ll starts at the access address, advLen is the length of the advertising data
+    local ll, advLen = BleTools.getLinkLayer()
+    if not ll then
+        return 0
+    end
 
-	local length = buffer:len()
-
-    -- advertisingdata starts here
-    local advDataOffset_Android = 29
+    local advDataOffset_Android = BleTools.ADV_DATA_OFFSET
 	local powerbox_Android_Identifier = 
-        length == 57 and
-        buffer(advDataOffset_Android +  3,  1):uint() == 0x15 and -- Length: 21
-        buffer(advDataOffset_Android +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset_Android +  5,  1):uint() == 0x00 and -- Company Id 0xff00
-        buffer(advDataOffset_Android +  6,  1):uint() == 0xff and
-        buffer(advDataOffset_Android +  7,  1):uint() == 0x6d and -- Identifier
-        buffer(advDataOffset_Android +  8,  1):uint() == 0xb6 and
-        buffer(advDataOffset_Android +  9,  1):uint() == 0x43 and
-        buffer(advDataOffset_Android + 10,  1):uint() == 0xcf and
-        buffer(advDataOffset_Android + 11,  1):uint() == 0x7e and
-        buffer(advDataOffset_Android + 12,  1):uint() == 0x8f and
-        buffer(advDataOffset_Android + 13,  1):uint() == 0x47 and
+        advLen == 25 and
+        ll(advDataOffset_Android +  3,  1):uint() == 0x15 and -- Length: 21
+        ll(advDataOffset_Android +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset_Android +  5,  1):uint() == 0x00 and -- Company Id 0xff00
+        ll(advDataOffset_Android +  6,  1):uint() == 0xff and
+        ll(advDataOffset_Android +  7,  1):uint() == 0x6d and -- Identifier
+        ll(advDataOffset_Android +  8,  1):uint() == 0xb6 and
+        ll(advDataOffset_Android +  9,  1):uint() == 0x43 and
+        ll(advDataOffset_Android + 10,  1):uint() == 0xcf and
+        ll(advDataOffset_Android + 11,  1):uint() == 0x7e and
+        ll(advDataOffset_Android + 12,  1):uint() == 0x8f and
+        ll(advDataOffset_Android + 13,  1):uint() == 0x47 and
         true                                              -- enabled
 
-    local advDataOffset_Windows = 26
+    -- Windows: this packet has no Flags AD, the manufacturer AD starts directly at the
+    -- advertising data start. The checks below are written with a "+ 3" shift like the
+    -- other variants, so the base is a virtual one: 3 bytes BEFORE the real data start.
+    local advDataOffset_Windows = BleTools.ADV_DATA_OFFSET - 3
 	local powerbox_Windows_Identifier = 
-        length == 62 and
-        buffer(advDataOffset_Windows +  3,  1):uint() == 0x1d and -- Length: 29
-        buffer(advDataOffset_Windows +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset_Windows +  5,  1):uint() == 0x00 and -- Company Id 0xff00
-        buffer(advDataOffset_Windows +  6,  1):uint() == 0xff and
-        buffer(advDataOffset_Windows +  7,  1):uint() == 0x00 and
-        buffer(advDataOffset_Windows +  8,  1):uint() == 0x00 and
-        buffer(advDataOffset_Windows +  9,  1):uint() == 0x00 and
-        buffer(advDataOffset_Windows + 10,  1):uint() == 0x6d and -- Identifier
-        buffer(advDataOffset_Windows + 11,  1):uint() == 0xb6 and
-        buffer(advDataOffset_Windows + 12,  1):uint() == 0x43 and
-        buffer(advDataOffset_Windows + 13,  1):uint() == 0xcf and
-        -- buffer(advDataOffset_Windows + 14,  1):uint() == 0x7e and
-        -- buffer(advDataOffset_Windows + 15,  1):uint() == 0x8f and
-        -- buffer(advDataOffset_Windows + 13,  1):uint() == 0x47 and
-        -- buffer(advDataOffset_Windows + 14,  1):uint() == 0x11 and
+        advLen == 30 and
+        ll(advDataOffset_Windows +  3,  1):uint() == 0x1d and -- Length: 29
+        ll(advDataOffset_Windows +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset_Windows +  5,  1):uint() == 0x00 and -- Company Id 0xff00
+        ll(advDataOffset_Windows +  6,  1):uint() == 0xff and
+        ll(advDataOffset_Windows +  7,  1):uint() == 0x00 and
+        ll(advDataOffset_Windows +  8,  1):uint() == 0x00 and
+        ll(advDataOffset_Windows +  9,  1):uint() == 0x00 and
+        ll(advDataOffset_Windows + 10,  1):uint() == 0x6d and -- Identifier
+        ll(advDataOffset_Windows + 11,  1):uint() == 0xb6 and
+        ll(advDataOffset_Windows + 12,  1):uint() == 0x43 and
+        ll(advDataOffset_Windows + 13,  1):uint() == 0xcf and
+        -- ll(advDataOffset_Windows + 14,  1):uint() == 0x7e and
+        -- ll(advDataOffset_Windows + 15,  1):uint() == 0x8f and
+        -- ll(advDataOffset_Windows + 13,  1):uint() == 0x47 and
+        -- ll(advDataOffset_Windows + 14,  1):uint() == 0x11 and
         true                                              -- enabled
 
 		
-    local advDataOffset_iOS = 29
+    local advDataOffset_iOS = BleTools.ADV_DATA_OFFSET
 	local powerbox_iOS_Identifier = 
-        length == 58 and
-        buffer(advDataOffset_iOS +  6,  1):uint() == 0x13 and -- Length: 19
-        buffer(advDataOffset_iOS +  7,  1):uint() == 0x03 and -- type: 16-bit Service Class UUIDs (0x03)
-        buffer(advDataOffset_iOS +  8,  1):uint() == 0xc8 and
-        -- buffer(advDataOffset_iOS +  8,  1):uint() == 0x19 and
-        -- buffer(advDataOffset_iOS +  9,  1):uint() == 0x00 and
-        -- buffer(advDataOffset_iOS + 10,  1):uint() == 0x00 and
-        -- buffer(advDataOffset_iOS + 11,  1):uint() == 0x00 and
-        -- buffer(advDataOffset_iOS + 12,  1):uint() == 0x6d and -- Identifier
-        -- buffer(advDataOffset_iOS + 13,  1):uint() == 0xb6 and
-        -- buffer(advDataOffset_iOS + 14,  1):uint() == 0x43 and
-        -- buffer(advDataOffset_iOS + 15,  1):uint() == 0xcf and
+        advLen == 26 and
+        ll(advDataOffset_iOS +  6,  1):uint() == 0x13 and -- Length: 19
+        ll(advDataOffset_iOS +  7,  1):uint() == 0x03 and -- type: 16-bit Service Class UUIDs (0x03)
+        ll(advDataOffset_iOS +  8,  1):uint() == 0xc8 and
+        -- ll(advDataOffset_iOS +  8,  1):uint() == 0x19 and
+        -- ll(advDataOffset_iOS +  9,  1):uint() == 0x00 and
+        -- ll(advDataOffset_iOS + 10,  1):uint() == 0x00 and
+        -- ll(advDataOffset_iOS + 11,  1):uint() == 0x00 and
+        -- ll(advDataOffset_iOS + 12,  1):uint() == 0x6d and -- Identifier
+        -- ll(advDataOffset_iOS + 13,  1):uint() == 0xb6 and
+        -- ll(advDataOffset_iOS + 14,  1):uint() == 0x43 and
+        -- ll(advDataOffset_iOS + 15,  1):uint() == 0xcf and
         true                                              -- enabled
 
 	if not (powerbox_Android_Identifier or
@@ -136,7 +139,7 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
 		return 0
 	end
 
-	local data = buffer(rawDataOffset,rawDataLength)
+	local data = ll(rawDataOffset,rawDataLength)
 	rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
 
 	if rawData then

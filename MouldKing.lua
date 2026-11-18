@@ -7,6 +7,7 @@ local bindir = script:match("(.+)[/\\]")
 package.path = package.path .. ";" .. bindir .. "/?.lua"
 
 -- load modul
+local BleTools = require("BLE_Tools")
 local CryptTools = require("Crypt_Tools")
 
 -- Define a new protocol for post-dissector usage.
@@ -24,74 +25,74 @@ local CTXValue2_JS_3 = 0x27
 
 function MouldKingDissector.dissector(buffer, pinfo, tree)
 
-    -- check protocol string
-	if not tostring(pinfo.cols.protocol) == "LE LL" then
-		return 0
-	end
+    -- locate the BLE link layer packet (independent of the capture link type);
+    -- ll starts at the access address, advLen is the length of the advertising data
+    local ll, advLen = BleTools.getLinkLayer()
+    if not ll then
+        return 0
+    end
 
-	local length = buffer:len()
-
-    -- advertisingdata starts here
-    local advDataOffset = 29
+    -- advertisingdata starts here (relative to the access address)
+    local advDataOffset = BleTools.ADV_DATA_OFFSET
 
 	local mouldking_Android_Identifier = 
-        length == 63 and
-        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
-        buffer(advDataOffset +  6,  1):uint() == 0xff and
-        buffer(advDataOffset +  7,  1):uint() == 0x6d and -- MouldKing identifier
-        buffer(advDataOffset +  8,  1):uint() == 0xb6 and
-        buffer(advDataOffset +  9,  1):uint() == 0x43 and
-        buffer(advDataOffset + 10,  1):uint() == 0xcf and
-        buffer(advDataOffset + 11,  1):uint() == 0x7e and
-        buffer(advDataOffset + 12,  1):uint() == 0x8f and
-        buffer(advDataOffset + 13,  1):uint() == 0x47 and
-        buffer(advDataOffset + 14,  1):uint() == 0x11 and
+        advLen == 31 and
+        ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+        ll(advDataOffset +  6,  1):uint() == 0xff and
+        ll(advDataOffset +  7,  1):uint() == 0x6d and -- MouldKing identifier
+        ll(advDataOffset +  8,  1):uint() == 0xb6 and
+        ll(advDataOffset +  9,  1):uint() == 0x43 and
+        ll(advDataOffset + 10,  1):uint() == 0xcf and
+        ll(advDataOffset + 11,  1):uint() == 0x7e and
+        ll(advDataOffset + 12,  1):uint() == 0x8f and
+        ll(advDataOffset + 13,  1):uint() == 0x47 and
+        ll(advDataOffset + 14,  1):uint() == 0x11 and
         true                                              -- enabled
 
     local mouldking_iOS_Identifier = 
-        length == 55 and
-        buffer(advDataOffset +  5,  1):uint() == 0xf9 and
-        buffer(advDataOffset +  6,  1):uint() == 0x08 and
-        buffer(advDataOffset +  7,  1):uint() == 0x49 and
-        buffer(advDataOffset +  8,  1):uint() == 0x22 and
-        buffer(advDataOffset +  9,  1):uint() == 0x47 and
-        buffer(advDataOffset + 10,  1):uint() == 0xba and
-        buffer(advDataOffset + 11,  1):uint() == 0xc4 and
-        buffer(advDataOffset + 12,  1):uint() == 0xbc and
+        advLen == 23 and
+        ll(advDataOffset +  5,  1):uint() == 0xf9 and
+        ll(advDataOffset +  6,  1):uint() == 0x08 and
+        ll(advDataOffset +  7,  1):uint() == 0x49 and
+        ll(advDataOffset +  8,  1):uint() == 0x22 and
+        ll(advDataOffset +  9,  1):uint() == 0x47 and
+        ll(advDataOffset + 10,  1):uint() == 0xba and
+        ll(advDataOffset + 11,  1):uint() == 0xc4 and
+        ll(advDataOffset + 12,  1):uint() == 0xbc and
         true                                              -- enabled
 
 	local jiestar_Android_EE_Identifier = 
-        length == 63 and
-        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
-        buffer(advDataOffset +  6,  1):uint() == 0xff and
-        buffer(advDataOffset +  7,  1):uint() == 0xee and -- JieStar identifier
-        buffer(advDataOffset +  8,  1):uint() == 0x1b and
-        buffer(advDataOffset +  9,  1):uint() == 0xc8 and
-        buffer(advDataOffset + 10,  1):uint() == 0x46 and
-        buffer(advDataOffset + 11,  1):uint() == 0x3e and
-        buffer(advDataOffset + 12,  1):uint() == 0x3d and
-        buffer(advDataOffset + 13,  1):uint() == 0xfb and
-        buffer(advDataOffset + 14,  1):uint() == 0xd2 and
+        advLen == 31 and
+        ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+        ll(advDataOffset +  6,  1):uint() == 0xff and
+        ll(advDataOffset +  7,  1):uint() == 0xee and -- JieStar identifier
+        ll(advDataOffset +  8,  1):uint() == 0x1b and
+        ll(advDataOffset +  9,  1):uint() == 0xc8 and
+        ll(advDataOffset + 10,  1):uint() == 0x46 and
+        ll(advDataOffset + 11,  1):uint() == 0x3e and
+        ll(advDataOffset + 12,  1):uint() == 0x3d and
+        ll(advDataOffset + 13,  1):uint() == 0xfb and
+        ll(advDataOffset + 14,  1):uint() == 0xd2 and
         true                                              -- enabled
 
 	local jiestar_Android_6F_Identifier = 
-        length == 63 and
-        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        buffer(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
-        buffer(advDataOffset +  6,  1):uint() == 0xff and
-        buffer(advDataOffset +  7,  1):uint() == 0x6f and -- JieStar identifier
-        buffer(advDataOffset +  8,  1):uint() == 0x7f and
-        buffer(advDataOffset +  9,  1):uint() == 0xb1 and
-        buffer(advDataOffset + 10,  1):uint() == 0xc1 and
-        buffer(advDataOffset + 11,  1):uint() == 0x01 and
-        buffer(advDataOffset + 12,  1):uint() == 0x53 and
-        buffer(advDataOffset + 13,  1):uint() == 0x6f and
-        buffer(advDataOffset + 14,  1):uint() == 0x6c and
+        advLen == 31 and
+        ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        ll(advDataOffset +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  5,  1):uint() == 0xf0 and -- Company Id 0xfff0
+        ll(advDataOffset +  6,  1):uint() == 0xff and
+        ll(advDataOffset +  7,  1):uint() == 0x6f and -- JieStar identifier
+        ll(advDataOffset +  8,  1):uint() == 0x7f and
+        ll(advDataOffset +  9,  1):uint() == 0xb1 and
+        ll(advDataOffset + 10,  1):uint() == 0xc1 and
+        ll(advDataOffset + 11,  1):uint() == 0x01 and
+        ll(advDataOffset + 12,  1):uint() == 0x53 and
+        ll(advDataOffset + 13,  1):uint() == 0x6f and
+        ll(advDataOffset + 14,  1):uint() == 0x6c and
         true                                              -- enabled
 
 	if not (mouldking_Android_Identifier or 
@@ -119,8 +120,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 	if mouldking_Android_Identifier then
 
 		length_is_8 = 
-			buffer(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
-			buffer(advDataOffset + 26,  1):uint() == 0x14
+			ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+			ll(advDataOffset + 26,  1):uint() == 0x14
 		
 		platform = "Android"
 		rawDataOffset = advDataOffset + 7
@@ -134,8 +135,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 	elseif mouldking_iOS_Identifier then
 
 		length_is_8 = 
-			buffer(advDataOffset + 23,  1):uint() == 0x12 and -- fill bytes
-			buffer(advDataOffset + 24,  1):uint() == 0x13
+			ll(advDataOffset + 23,  1):uint() == 0x12 and -- fill bytes
+			ll(advDataOffset + 24,  1):uint() == 0x13
 
 		platform = "iOS"
 		rawDataOffset = advDataOffset + 5
@@ -149,8 +150,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 	elseif jiestar_Android_EE_Identifier then
 
 		length_is_8 = 
-			buffer(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
-			buffer(advDataOffset + 26,  1):uint() == 0x14
+			ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+			ll(advDataOffset + 26,  1):uint() == 0x14
 		
 		platform = "Android"
 		rawDataOffset = advDataOffset + 7
@@ -163,8 +164,8 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 	elseif jiestar_Android_6F_Identifier then
 
 		length_is_8 = 
-			buffer(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
-			buffer(advDataOffset + 26,  1):uint() == 0x14
+			ll(advDataOffset + 25,  1):uint() == 0x13 and -- fill bytes
+			ll(advDataOffset + 26,  1):uint() == 0x14
 		
 		manufacturer = "JieStarRaw"
 		platform = "Android"
@@ -187,7 +188,7 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 		datagramname = "10-Byte Payload"
 	end
 
-	local data = buffer(rawDataOffset,rawDataLength)
+	local data = ll(rawDataOffset,rawDataLength)
 	rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
 
 	if rawData then

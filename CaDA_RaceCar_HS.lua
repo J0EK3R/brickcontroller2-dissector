@@ -1,81 +1,92 @@
+-- get current path
+local info   = debug.getinfo(1, "S").source
+local script = info:sub(2)
+local bindir = script:match("(.+)[/\\]")
+
+-- extend package.path with current path
+package.path = package.path .. ";" .. bindir .. "/?.lua"
+
+-- load modul
+local BleTools = require("BLE_Tools")
+
 -- Define a new protocol for post-dissector usage.
 local CaDADissector = Proto("CaDA_HS", "Global Frame Analyzer for Bluetooth LE from CaDA - Type HS")
 
 function CaDADissector.dissector(buffer, pinfo, tree)
 
-    -- check protocol string
-	if not tostring(pinfo.cols.protocol) == "LE LL" then
-		return 0
-	end
+    -- locate the BLE link layer packet (independent of the capture link type);
+    -- ll starts at the access address, advLen is the length of the advertising data
+    local ll, advLen = BleTools.getLinkLayer()
+    if not ll then
+        return 0
+    end
 
-	local length = buffer:len()
-
-    -- advertisingdata starts here
-    local advDataOffset = 29
+    -- advertisingdata starts here (relative to the access address)
+    local advDataOffset = BleTools.ADV_DATA_OFFSET
 
     local cada_Device_Response = 
-        length == 63 and
-        buffer(advDataOffset + 0,  1):uint() == 0x11 and -- Length: 17
-        buffer(advDataOffset + 1,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset + 2,  1):uint() == 0xaa and -- Company Id 0x11aa
-        buffer(advDataOffset + 3,  1):uint() == 0x11 and
-        buffer(advDataOffset + 4,  1):uint() == 0x11 and -- CaDA identifier
+        advLen == 31 and
+        ll(advDataOffset + 0,  1):uint() == 0x11 and -- Length: 17
+        ll(advDataOffset + 1,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset + 2,  1):uint() == 0xaa and -- Company Id 0x11aa
+        ll(advDataOffset + 3,  1):uint() == 0x11 and
+        ll(advDataOffset + 4,  1):uint() == 0x11 and -- CaDA identifier
         true                                             -- enabled
 
     local cada_Android_Identifier = 
-        length == 55 and
-        buffer(advDataOffset +  3, 1):uint() == 0x13 and -- Length: 19
-        buffer(advDataOffset +  4, 1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        buffer(advDataOffset +  5, 1):uint() == 0x00 and -- Company Id 0xc200
-        buffer(advDataOffset +  6, 1):uint() == 0xc2 and -- 
-        -- buffer(advDataOffset +  7, 1):uint() == 0xbb and -- 0xbb (command) or 0x 0xaa (connect)
-        buffer(advDataOffset +  8, 1):uint() == 0x11 and -- header: 0x11
-        buffer(advDataOffset +  9, 1):uint() == 0x11 and -- 
-        -- buffer(advDataOffset + 10, 1):uint() == 0xc9 and -- device id 0xc1c9
-        -- buffer(advDataOffset + 11, 1):uint() == 0xc1 and -- 
-        -- buffer(advDataOffset + 12, 1):uint() == 0x79 and -- app id 0x2979
-        -- buffer(advDataOffset + 13, 1):uint() == 0x29 and -- 
-        -- buffer(advDataOffset + 14, 1):uint() == 0x00 and -- aa - trottle
-        -- buffer(advDataOffset + 15, 1):uint() == 0x00 and -- bb - steering
-        -- buffer(advDataOffset + 16, 1):uint() == 0x00 and -- cc - lights
-        -- buffer(advDataOffset + 17, 1):uint() == 0x00 and -- dd - offset
-        -- buffer(advDataOffset + 18, 1):uint() == 0x00 and -- ee - sequence id
-        buffer(advDataOffset + 19, 1):uint() == 0xcc and -- footer 0xcc
-        buffer(advDataOffset + 20, 1):uint() == 0xb8 and -- footer 0xb8
-        buffer(advDataOffset + 21, 1):uint() == 0x92 and -- footer 0x92
-        -- buffer(advDataOffset + 22, 1):uint() == 0xb0 and -- footer 0xb0 (command) or 0x 0xa0 (connect)
+        advLen == 23 and
+        ll(advDataOffset +  3, 1):uint() == 0x13 and -- Length: 19
+        ll(advDataOffset +  4, 1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
+        ll(advDataOffset +  5, 1):uint() == 0x00 and -- Company Id 0xc200
+        ll(advDataOffset +  6, 1):uint() == 0xc2 and -- 
+        -- ll(advDataOffset +  7, 1):uint() == 0xbb and -- 0xbb (command) or 0x 0xaa (connect)
+        ll(advDataOffset +  8, 1):uint() == 0x11 and -- header: 0x11
+        ll(advDataOffset +  9, 1):uint() == 0x11 and -- 
+        -- ll(advDataOffset + 10, 1):uint() == 0xc9 and -- device id 0xc1c9
+        -- ll(advDataOffset + 11, 1):uint() == 0xc1 and -- 
+        -- ll(advDataOffset + 12, 1):uint() == 0x79 and -- app id 0x2979
+        -- ll(advDataOffset + 13, 1):uint() == 0x29 and -- 
+        -- ll(advDataOffset + 14, 1):uint() == 0x00 and -- aa - trottle
+        -- ll(advDataOffset + 15, 1):uint() == 0x00 and -- bb - steering
+        -- ll(advDataOffset + 16, 1):uint() == 0x00 and -- cc - lights
+        -- ll(advDataOffset + 17, 1):uint() == 0x00 and -- dd - offset
+        -- ll(advDataOffset + 18, 1):uint() == 0x00 and -- ee - sequence id
+        ll(advDataOffset + 19, 1):uint() == 0xcc and -- footer 0xcc
+        ll(advDataOffset + 20, 1):uint() == 0xb8 and -- footer 0xb8
+        ll(advDataOffset + 21, 1):uint() == 0x92 and -- footer 0x92
+        -- ll(advDataOffset + 22, 1):uint() == 0xb0 and -- footer 0xb0 (command) or 0x 0xa0 (connect)
         true                                              -- enabled
 
     local cada_iOS_Identifier =
-        length == 63 and
-        buffer(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        buffer(advDataOffset +  4,  1):uint() == 0x03 and -- type: Complete List of 16-bit Service Class UUIDs (0x03)
-        buffer(advDataOffset +  5,  1):uint() == 0xc0 and -- CaDA identifier 0xc000
-        buffer(advDataOffset +  6,  1):uint() == 0x00 and
-        -- buffer(advDataOffset +  7,  1):uint() == 0xbb and -- 0xbb (command) or 0x 0xaa (connect)
-        buffer(advDataOffset +  8,  1):uint() == 0x11 and -- header: 0x11
-        buffer(advDataOffset +  9,  1):uint() == 0x11 and --
-        -- buffer(advDataOffset + 10,  1):uint() == 0xc9 and -- device id 0xc1c9
-        -- buffer(advDataOffset + 11,  1):uint() == 0xc1 and --
-        -- buffer(advDataOffset + 12,  1):uint() == 0x17 and -- app id 0xc117
-        -- buffer(advDataOffset + 13,  1):uint() == 0x7f and --
-        -- buffer(advDataOffset + 14,  1):uint() == 0xe4 and -- aa - trottle
-        -- buffer(advDataOffset + 15,  1):uint() == 0xe4 and -- bb - steering
-        -- buffer(advDataOffset + 16,  1):uint() == 0x00 and -- cc - lights
-        -- buffer(advDataOffset + 17,  1):uint() == 0x64 and -- dd - offset
-        -- buffer(advDataOffset + 18,  1):uint() == 0xa1 and -- ee - sequence id
-        buffer(advDataOffset + 19,  1):uint() == 0xcc and -- footer 0xcc 
-        buffer(advDataOffset + 20,  1):uint() == 0xb8 and -- footer 0xb8
-        buffer(advDataOffset + 21,  1):uint() == 0x92 and -- footer 0x92
-        -- buffer(advDataOffset + 22,  1):uint() == 0xb0 and -- footer 0xb0 (command) or 0x 0xa0 (connect)
-        -- buffer(advDataOffset + 23,  1):uint() == 0xef and -- 
-        -- buffer(advDataOffset + 24,  1):uint() == 0xf2 and -- 
-        -- buffer(advDataOffset + 25,  1):uint() == 0xc5 and -- 
-        -- buffer(advDataOffset + 26,  1):uint() == 0x67 and -- 
-        -- buffer(advDataOffset + 27,  1):uint() == 0x8f and -- 
-        -- buffer(advDataOffset + 28,  1):uint() == 0x9f and -- 
-        -- buffer(advDataOffset + 29,  1):uint() == 0xf1 and -- 
-        -- buffer(advDataOffset + 30,  1):uint() == 0xf8 and -- 
+        advLen == 31 and
+        ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
+        ll(advDataOffset +  4,  1):uint() == 0x03 and -- type: Complete List of 16-bit Service Class UUIDs (0x03)
+        ll(advDataOffset +  5,  1):uint() == 0xc0 and -- CaDA identifier 0xc000
+        ll(advDataOffset +  6,  1):uint() == 0x00 and
+        -- ll(advDataOffset +  7,  1):uint() == 0xbb and -- 0xbb (command) or 0x 0xaa (connect)
+        ll(advDataOffset +  8,  1):uint() == 0x11 and -- header: 0x11
+        ll(advDataOffset +  9,  1):uint() == 0x11 and --
+        -- ll(advDataOffset + 10,  1):uint() == 0xc9 and -- device id 0xc1c9
+        -- ll(advDataOffset + 11,  1):uint() == 0xc1 and --
+        -- ll(advDataOffset + 12,  1):uint() == 0x17 and -- app id 0xc117
+        -- ll(advDataOffset + 13,  1):uint() == 0x7f and --
+        -- ll(advDataOffset + 14,  1):uint() == 0xe4 and -- aa - trottle
+        -- ll(advDataOffset + 15,  1):uint() == 0xe4 and -- bb - steering
+        -- ll(advDataOffset + 16,  1):uint() == 0x00 and -- cc - lights
+        -- ll(advDataOffset + 17,  1):uint() == 0x64 and -- dd - offset
+        -- ll(advDataOffset + 18,  1):uint() == 0xa1 and -- ee - sequence id
+        ll(advDataOffset + 19,  1):uint() == 0xcc and -- footer 0xcc 
+        ll(advDataOffset + 20,  1):uint() == 0xb8 and -- footer 0xb8
+        ll(advDataOffset + 21,  1):uint() == 0x92 and -- footer 0x92
+        -- ll(advDataOffset + 22,  1):uint() == 0xb0 and -- footer 0xb0 (command) or 0x 0xa0 (connect)
+        -- ll(advDataOffset + 23,  1):uint() == 0xef and -- 
+        -- ll(advDataOffset + 24,  1):uint() == 0xf2 and -- 
+        -- ll(advDataOffset + 25,  1):uint() == 0xc5 and -- 
+        -- ll(advDataOffset + 26,  1):uint() == 0x67 and -- 
+        -- ll(advDataOffset + 27,  1):uint() == 0x8f and -- 
+        -- ll(advDataOffset + 28,  1):uint() == 0x9f and -- 
+        -- ll(advDataOffset + 29,  1):uint() == 0xf1 and -- 
+        -- ll(advDataOffset + 30,  1):uint() == 0xf8 and -- 
         true                                              -- enabled
 
     if not (cada_Device_Response or cada_Android_Identifier or cada_iOS_Identifier) then 
@@ -95,7 +106,7 @@ function CaDADissector.dissector(buffer, pinfo, tree)
         local frameinfo = platform .. " - " .. manufacturer .." - " .. datagramname
         pinfo.cols.info = frameinfo
      
-        local rawData = buffer(rawDataOffset, rawDataLength):bytes()
+        local rawData = ll(rawDataOffset, rawDataLength):bytes()
 
         if tree and rawData then
             local tvb2 = ByteArray.tvb(rawData, frameinfo)
@@ -127,7 +138,7 @@ function CaDADissector.dissector(buffer, pinfo, tree)
             
         end
 
-        local rawdata = buffer(rawDataOffset, rawDataLength)
+        local rawdata = ll(rawDataOffset, rawDataLength)
 
         local command = rawdata(0, 1):uint()
         
