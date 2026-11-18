@@ -1,200 +1,174 @@
--- get current path
-local info   = debug.getinfo(1, "S").source
-local script = info:sub(2)
-local bindir = script:match("(.+)[/\\]")
+-- PowerBox.lua
+--
+-- Wireshark post-dissector for the Bluetooth LE advertising datagrams of the MouldKing
+-- "PowerBox" (Android, Windows and iOS app). The advertising payload is decrypted with
+-- Crypt_Tools and shown in the Info column and in the packet tree.
+--
+-- Structure of this file: preamble -> constants/tables -> helpers -> dissector -> registration.
+-- A new platform variant is added as one more row of VARIANTS.
 
--- extend package.path with current path
-package.path = package.path .. ";" .. bindir .. "/?.lua"
+-- Preamble: make the helper modules next to this script loadable with require(). Wireshark
+-- only loads the scripts, it does not add their folder to package.path.
+local script = debug.getinfo(1, "S").source:sub(2)
+local bindir = script:match("(.+)[/\\]") or "."          -- folder of this script
+local searchPath = ";" .. bindir .. "/?.lua"
+if not package.path:find(searchPath, 1, true) then      -- do not append the same path twice
+    package.path = package.path .. searchPath
+end
 
--- load modul
 local BleTools = require("BLE_Tools")
 local CryptTools = require("Crypt_Tools")
 
--- Define a new protocol for post-dissector usage.
+-- Protocol object of this post-dissector (used as the owner of the tree items).
 local PowerBoxDissector = Proto("PowerBox", "Global Frame Analyzer for Bluetooth LE from PowerBox")
 
-local SeedArray = { 0xC1, 0xC2, 0xC3, 0xC4, 0xC5 }
-local CTXValue1 = 0x3f
-local CTXValue2 = 0x25
+-- Filterable fields (powerbox.cmd, powerbox.id, ...). They are added to the packet tree as hidden items,
+-- the visible tree text is the same as without them.
+local fields, fieldList = BleTools.newDatagramFields("powerbox")
+PowerBoxDissector.fields = fieldList
 
+-- Decryption parameters (identical for all platforms).
+local SEED = { 0xC1, 0xC2, 0xC3, 0xC4, 0xC5 }
+local CTX_VALUE_1 = 0x3f
+local CTX_VALUE_2 = 0x25
+local HEADER_LENGTH = 3     -- bytes of the decrypted header (command + 2 byte device id)
+local DATA_LENGTH = 8       -- bytes of the decrypted datagram (command, id, 4 data bytes, checksum)
+
+-- Offset base of the variant rows. All "offset" values below are relative to the base.
+local ADV_DATA = BleTools.ADV_DATA_OFFSET
+
+-- Variant table, one row per platform, tried in this order.
+--   platform     shown in the Info column
+--   advLen       exact length of the advertising data
+--   base         offset the pattern and rawOffset are relative to
+--   pattern      identifying bytes as {offset, value} pairs (everything else is "don't care")
+--   rawOffset    where the encrypted payload starts (relative to base)
+--   rawLength    length of the encrypted payload
+--   headerOffset position of the header in the whitening sequence (see Crypt_Tools)
+local VARIANTS = {
+    {
+        platform = "Android",
+        advLen = 25,
+        base = ADV_DATA,
+        pattern = {
+            { 3, 0x15 },    -- AD length: 21
+            { 4, 0xff },    -- AD type: Manufacturer Specific (0xff)
+            { 5, 0x00 },    -- company id 0xff00 ...
+            { 6, 0xff },
+            { 7, 0x6d },    -- identifier (first bytes of the encrypted payload)
+            { 8, 0xb6 },
+            { 9, 0x43 },
+            { 10, 0xcf },
+            { 11, 0x7e },
+            { 12, 0x8f },
+            { 13, 0x47 },
+        },
+        rawOffset = 7,
+        rawLength = 19,
+        headerOffset = 15,
+    },
+    {
+        -- This packet has no Flags AD, the manufacturer AD starts directly at the advertising
+        -- data start. The pattern is written with a "+ 3" shift like the other variants, so
+        -- the base is a virtual one: 3 bytes BEFORE the real data start.
+        platform = "Windows",
+        advLen = 30,
+        base = ADV_DATA - 3,
+        pattern = {
+            { 3, 0x1d },    -- AD length: 29
+            { 4, 0xff },    -- AD type: Manufacturer Specific (0xff)
+            { 5, 0x00 },    -- company id 0xff00 ...
+            { 6, 0xff },
+            { 7, 0x00 },
+            { 8, 0x00 },
+            { 9, 0x00 },
+            { 10, 0x6d },   -- identifier (first bytes of the encrypted payload)
+            { 11, 0xb6 },
+            { 12, 0x43 },
+            { 13, 0xcf },
+            -- offset 14..15 (0x7e 0x8f): rest of the identifier, not checked
+        },
+        rawOffset = 10,
+        rawLength = 18,
+        headerOffset = 15,
+    },
+    {
+        platform = "iOS",
+        advLen = 26,
+        base = ADV_DATA,
+        pattern = {
+            { 6, 0x13 },    -- AD length: 19
+            { 7, 0x03 },    -- AD type: 16-bit Service Class UUIDs (0x03)
+            { 8, 0xc8 },    -- first byte of the encrypted payload (identifier)
+            -- offset 9..15: rest of the identifier (0x19 0x00 0x00 0x00 0x6d 0xb6 ...), not checked
+        },
+        rawOffset = 8,
+        rawLength = 18,
+        headerOffset = 16,
+    },
+}
+
+--- Find the variant row whose identifier matches the advertising data.
+-- @param ll     Tvb of the LL packet
+-- @param advLen length of the advertising data
+-- @return the matching row of VARIANTS or nil
+local function findVariant(ll, advLen)
+    for _, variant in ipairs(VARIANTS) do
+        if advLen == variant.advLen and BleTools.matches(ll, variant.base, variant.pattern) then
+            return variant
+        end
+    end
+    return nil
+end
+
+--- Build manufacturer and datagram name for a decrypted datagram.
+-- @param datagram decrypted datagram (ByteArray)
+-- @return manufacturer, datagramname
+local function describeDatagram(datagram)
+    local command = datagram:get_index(0)
+    if command == 0xa4 then
+        -- Connect: only the device id is of interest.
+        return "PowerBox", "Connect " .. BleTools.describe(datagram, 0)
+    elseif command == 0x40 then
+        -- Command: device id followed by 4 data bytes.
+        return "PowerBox", "Command " .. BleTools.describe(datagram, 4)
+    end
+    return "Unknown", string.format("unknown - 0x%02x", command)
+end
+
+--- Post-dissector function, called by Wireshark for every frame.
+-- Leaves frames alone that are not PowerBox advertising packets (returns 0).
 function PowerBoxDissector.dissector(buffer, pinfo, tree)
-
-    -- locate the BLE link layer packet (independent of the capture link type);
-    -- ll starts at the access address, advLen is the length of the advertising data
+    -- Locate the BLE link layer packet (independent of the capture link type);
+    -- ll starts at the access address, advLen is the length of the advertising data.
     local ll, advLen = BleTools.getLinkLayer()
     if not ll then
         return 0
     end
 
-    local advDataOffset_Android = BleTools.ADV_DATA_OFFSET
-	local powerbox_Android_Identifier = 
-        advLen == 25 and
-        ll(advDataOffset_Android +  3,  1):uint() == 0x15 and -- Length: 21
-        ll(advDataOffset_Android +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        ll(advDataOffset_Android +  5,  1):uint() == 0x00 and -- Company Id 0xff00
-        ll(advDataOffset_Android +  6,  1):uint() == 0xff and
-        ll(advDataOffset_Android +  7,  1):uint() == 0x6d and -- Identifier
-        ll(advDataOffset_Android +  8,  1):uint() == 0xb6 and
-        ll(advDataOffset_Android +  9,  1):uint() == 0x43 and
-        ll(advDataOffset_Android + 10,  1):uint() == 0xcf and
-        ll(advDataOffset_Android + 11,  1):uint() == 0x7e and
-        ll(advDataOffset_Android + 12,  1):uint() == 0x8f and
-        ll(advDataOffset_Android + 13,  1):uint() == 0x47 and
-        true                                              -- enabled
+    local variant = findVariant(ll, advLen)
+    if not variant then
+        return 0
+    end
 
-    -- Windows: this packet has no Flags AD, the manufacturer AD starts directly at the
-    -- advertising data start. The checks below are written with a "+ 3" shift like the
-    -- other variants, so the base is a virtual one: 3 bytes BEFORE the real data start.
-    local advDataOffset_Windows = BleTools.ADV_DATA_OFFSET - 3
-	local powerbox_Windows_Identifier = 
-        advLen == 30 and
-        ll(advDataOffset_Windows +  3,  1):uint() == 0x1d and -- Length: 29
-        ll(advDataOffset_Windows +  4,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        ll(advDataOffset_Windows +  5,  1):uint() == 0x00 and -- Company Id 0xff00
-        ll(advDataOffset_Windows +  6,  1):uint() == 0xff and
-        ll(advDataOffset_Windows +  7,  1):uint() == 0x00 and
-        ll(advDataOffset_Windows +  8,  1):uint() == 0x00 and
-        ll(advDataOffset_Windows +  9,  1):uint() == 0x00 and
-        ll(advDataOffset_Windows + 10,  1):uint() == 0x6d and -- Identifier
-        ll(advDataOffset_Windows + 11,  1):uint() == 0xb6 and
-        ll(advDataOffset_Windows + 12,  1):uint() == 0x43 and
-        ll(advDataOffset_Windows + 13,  1):uint() == 0xcf and
-        -- ll(advDataOffset_Windows + 14,  1):uint() == 0x7e and
-        -- ll(advDataOffset_Windows + 15,  1):uint() == 0x8f and
-        -- ll(advDataOffset_Windows + 13,  1):uint() == 0x47 and
-        -- ll(advDataOffset_Windows + 14,  1):uint() == 0x11 and
-        true                                              -- enabled
+    -- Decrypt the payload.
+    local encrypted = ll(variant.base + variant.rawOffset, variant.rawLength):bytes()
+    local decrypted = CryptTools.DecryptRfPayload(SEED, HEADER_LENGTH, DATA_LENGTH,
+        variant.headerOffset, CTX_VALUE_1, CTX_VALUE_2, encrypted)
 
-		
-    local advDataOffset_iOS = BleTools.ADV_DATA_OFFSET
-	local powerbox_iOS_Identifier = 
-        advLen == 26 and
-        ll(advDataOffset_iOS +  6,  1):uint() == 0x13 and -- Length: 19
-        ll(advDataOffset_iOS +  7,  1):uint() == 0x03 and -- type: 16-bit Service Class UUIDs (0x03)
-        ll(advDataOffset_iOS +  8,  1):uint() == 0xc8 and
-        -- ll(advDataOffset_iOS +  8,  1):uint() == 0x19 and
-        -- ll(advDataOffset_iOS +  9,  1):uint() == 0x00 and
-        -- ll(advDataOffset_iOS + 10,  1):uint() == 0x00 and
-        -- ll(advDataOffset_iOS + 11,  1):uint() == 0x00 and
-        -- ll(advDataOffset_iOS + 12,  1):uint() == 0x6d and -- Identifier
-        -- ll(advDataOffset_iOS + 13,  1):uint() == 0xb6 and
-        -- ll(advDataOffset_iOS + 14,  1):uint() == 0x43 and
-        -- ll(advDataOffset_iOS + 15,  1):uint() == 0xcf and
-        true                                              -- enabled
+    local manufacturer = "PowerBox"
+    local datagramname
+    if decrypted then
+        manufacturer, datagramname = describeDatagram(decrypted)
+    else
+        datagramname = "Decryption failed"
+    end
 
-	if not (powerbox_Android_Identifier or
-			powerbox_Windows_Identifier or
-			powerbox_iOS_Identifier) then 
-		return 0
-	end
-
-	local frameinfo = "unknown"
-	local platform = "unknown"
-	local manufacturer = "PowerBox"
-	local datagramname = "8-Byte Payload"
-	local rawData
-	local rawDataOffset
-	local rawDataLength
-	local headerOffset
-	local resultDataLength = 8
-	local seedArray
-	local ctxValue1
-	local ctxValue2
-
-	-- Android
-	if powerbox_Android_Identifier then
-		
-		platform = "Android"
-		rawDataOffset = advDataOffset_Android + 7
-		rawDataLength = 19
-		headerOffset = 15
-		seedArray = SeedArray
-		ctxValue1 = CTXValue1
-		ctxValue2 = CTXValue2
-
-	-- Windows
-	elseif powerbox_Windows_Identifier then
-		
-		platform = "Windows"
-		rawDataOffset = advDataOffset_Windows + 10
-		rawDataLength = 18
-		headerOffset = 15
-		seedArray = SeedArray
-		ctxValue1 = CTXValue1
-		ctxValue2 = CTXValue2
-
-	-- iOS
-	elseif powerbox_iOS_Identifier then
-		
-		platform = "iOS"
-		rawDataOffset = advDataOffset_iOS + 8
-		rawDataLength = 18
-		headerOffset = 16
-		seedArray = SeedArray
-		ctxValue1 = CTXValue1
-		ctxValue2 = CTXValue2
-
-	else
-
-		return 0
-	end
-
-	local data = ll(rawDataOffset,rawDataLength)
-	rawData = CryptTools.DecryptRfPayload(seedArray, 3, resultDataLength, headerOffset, ctxValue1, ctxValue2, data:bytes())
-
-	if rawData then
-		local command = rawData:get_index(0)
-		local commandLength = rawData:len()
-		
-		datagramname = datagramname .. " - Command: " .. string.format("0x%02x", command) .. " - Length: " .. commandLength
-
-		if command == 0xa4 then
-
-			manufacturer = "PowerBox"
-			datagramname = "Connect" ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]"
-			
-		elseif command == 0x40 then
-
-			manufacturer = "PowerBox"
-			datagramname = "Command"  ..
-				" Cmd[" .. string.format("%02x", rawData:get_index(0)) .. "]" ..
-				" ID[" .. string.format("%02x", rawData:get_index(1)) .. string.format(" %02x", rawData:get_index(2)) .. "]" ..
-				string.format(" %02x", rawData:get_index(3)) ..
-				string.format(" %02x", rawData:get_index(4)) ..
-				string.format(" %02x", rawData:get_index(5)) ..
-				string.format(" %02x", rawData:get_index(6))
-			
-		else
-
-			manufacturer = "Unknown"
-			datagramname = string.format("unknown - 0x%02x", command)
-
-		end
-	
-	else
-
-		datagramname = "Decryption failed"
-
-	end
-
-    frameinfo = platform .. " - " .. manufacturer .. " - " .. datagramname
-
-	if tree and rawData then
-		local tvb1 = ByteArray.tvb(data:bytes(), frameinfo)
-		local subtree1 = tree:add(PowerBoxDissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
-		subtree1:add(tvb1(), "Len: " .. tvb1():len())
-
-		local tvb2 = ByteArray.tvb(rawData, frameinfo)
-		local subtree2 = tree:add(PowerBoxDissector, tvb2(), platform .. " - " .. manufacturer .. " - decrypted")
-		subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
-	end
-	pinfo.cols.info = frameinfo
-
+    local frameinfo = variant.platform .. " - " .. manufacturer .. " - " .. datagramname
+    BleTools.addPayloadTrees(tree, PowerBoxDissector, frameinfo, variant.platform, manufacturer,
+        encrypted, decrypted, datagramname, fields)
+    pinfo.cols.info = frameinfo
 end
 
 -- Register as a post-dissector; this will run for every frame.
 register_postdissector(PowerBoxDissector)
-
-

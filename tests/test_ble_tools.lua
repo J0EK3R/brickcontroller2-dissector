@@ -116,6 +116,99 @@ check("PDU length < 6 -> nil", BleTools.getLinkLayer() == nil)
 currentField = { range = { tvb = function() error("boom") end } }
 check("range:tvb() error -> nil (no exception)", BleTools.getLinkLayer() == nil)
 
+-- ---------------------------------------------------------------------------
+-- matches()
+-- ---------------------------------------------------------------------------
+local ll12 = makeTvb(string.char(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15))
+check("matches: all bytes equal", BleTools.matches(ll12, 0, { { 1, 1 }, { 3, 3 }, { 15, 15 } }))
+check("matches: with base offset", BleTools.matches(ll12, 10, { { 0, 10 }, { 5, 15 } }))
+check("matches: virtual base before the data", BleTools.matches(ll12, 12 - 3, { { 3, 12 }, { 4, 13 } }))
+check("matches: mismatch -> false", not BleTools.matches(ll12, 0, { { 1, 1 }, { 2, 99 } }))
+check("matches: first mismatch stops (later out-of-range offset is not read)",
+      not BleTools.matches(ll12, 0, { { 1, 99 }, { 500, 0 } }))
+check("matches: offset behind the packet -> false, no error", not BleTools.matches(ll12, 0, { { 16, 0 } }))
+check("matches: offset before the packet -> false, no error", not BleTools.matches(ll12, 0, { { -1, 0 } }))
+check("matches: empty pattern matches", BleTools.matches(ll12, 0, {}))
+
+-- ---------------------------------------------------------------------------
+-- hex() / describe(): a ByteArray stub with 0 based get_index
+-- ---------------------------------------------------------------------------
+local function makeBytes(...)
+    local list = { ... }
+    return { get_index = function(_, i) return list[i + 1] end, len = function() return #list end }
+end
+local datagram = makeBytes(0x66, 0x7b, 0xa7, 0x80, 0x80, 0x80, 0x4f, 0x99)
+check("hex: range", BleTools.hex(datagram, 3, 5) == " 80 80 80")
+check("hex: single byte", BleTools.hex(datagram, 2, 2) == " a7")
+check("hex: empty range", BleTools.hex(datagram, 4, 3) == "")
+check("hex: lower case, zero padded", BleTools.hex(makeBytes(0x0a, 0xFF), 0, 1) == " 0a ff")
+check("describe: id only", BleTools.describe(datagram, 0) == "Cmd[66] ID[7b a7]")
+check("describe: 4 data bytes", BleTools.describe(datagram, 4) == "Cmd[66] ID[7b a7] 80 80 80 4f")
+check("describe: 6 data bytes", BleTools.describe(makeBytes(0x7d, 0x7b, 0xa7, 1, 2, 3, 4, 5, 6, 0x82), 6)
+      == "Cmd[7d] ID[7b a7] 01 02 03 04 05 06")
+
+-- ---------------------------------------------------------------------------
+-- addPayloadTrees(): record what is added to a fake tree
+-- ---------------------------------------------------------------------------
+local added = {}
+local function fakeSubtree(label)
+    return { add = function(_, _, text) added[#added + 1] = (text or "") end,
+             label = label }
+end
+local fakeTree = { add = function(_, _, _, label)
+    added[#added + 1] = label
+    return fakeSubtree(label)
+end }
+local originalByteArray = ByteArray
+-- ByteArray.tvb(bytes, name) returns a function that yields a range with :len()
+ByteArray = { tvb = function(bytes) return function() return { len = function() return bytes:len() end } end end }
+local function treeLines(tree, decrypted)
+    added = {}
+    BleTools.addPayloadTrees(tree, {}, "info", "Android", "MouldKing", makeBytes(1, 2, 3), decrypted, "X Connect")
+    return table.concat(added, "|")
+end
+check("addPayloadTrees: builds both subtrees",
+      treeLines(fakeTree, datagram) ==
+      "Android - MouldKing - Payload|Len: 3|Android - MouldKing - decrypted|X Connect-Datagram - Len: 8")
+check("addPayloadTrees: no tree -> nothing", treeLines(nil, datagram) == "")
+check("addPayloadTrees: no decrypted data -> nothing", treeLines(fakeTree, nil) == "")
+
+-- With ProtoFields: the datagram line keeps its text, everything else is hidden.
+local items = {}
+local function recordingSubtree()
+    return { add = function(self, field, _, value, label)
+        local item = { field = type(field) == "table" and field.name or nil, value = value, label = label,
+                       set_hidden = function(this) this.hidden = true end }
+        items[#items + 1] = item
+        return item.field and item or recordingSubtree()
+    end }
+end
+local fieldTree = { add = function(_, _, _, label) items[#items + 1] = { label = label }; return recordingSubtree() end }
+-- ProtoField stub: a table with a name; base.HEX only has to exist
+local originalProtoField, originalBase = ProtoField, base
+base = { HEX = 1 }
+local function stubField(abbrev) return { name = abbrev } end
+ProtoField = { string = stubField, bytes = stubField, uint8 = stubField, uint16 = stubField }
+local fields, fieldList = BleTools.newDatagramFields("mk")
+check("newDatagramFields: abbreviations carry the prefix", fields.cmd.name == "mk.cmd" and fields.id.name == "mk.id")
+check("newDatagramFields: list holds all 7 fields", #fieldList == 7)
+items = {}
+BleTools.addPayloadTrees(fieldTree, {}, "info", "Android", "MouldKing", makeBytes(1, 2, 3), datagram, "X Connect", fields)
+local seen = {}
+for _, item in ipairs(items) do
+    if item.field then seen[item.field] = item end
+end
+check("addPayloadTrees+fields: datagram line keeps its text",
+      seen["mk.datagram"] and seen["mk.datagram"].label == "X Connect-Datagram - Len: 8"
+      and seen["mk.datagram"].value == "X Connect" and not seen["mk.datagram"].hidden)
+check("addPayloadTrees+fields: cmd/id/data/platform/manufacturer/payload are hidden",
+      seen["mk.cmd"] and seen["mk.cmd"].hidden and seen["mk.id"].hidden and seen["mk.data"].hidden
+      and seen["mk.platform"].hidden and seen["mk.manufacturer"].hidden and seen["mk.payload"].hidden)
+check("addPayloadTrees+fields: string fields carry their value",
+      seen["mk.platform"].value == "Android" and seen["mk.manufacturer"].value == "MouldKing")
+ProtoField, base = originalProtoField, originalBase
+ByteArray = originalByteArray
+
 check("ADV_DATA_OFFSET is 12", BleTools.ADV_DATA_OFFSET == 12)
 
 if failures > 0 then

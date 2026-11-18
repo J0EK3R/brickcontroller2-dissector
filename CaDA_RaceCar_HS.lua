@@ -1,226 +1,270 @@
--- get current path
-local info   = debug.getinfo(1, "S").source
-local script = info:sub(2)
-local bindir = script:match("(.+)[/\\]")
+-- CaDA_RaceCar_HS.lua
+--
+-- Wireshark post-dissector for the Bluetooth LE advertising datagrams of the CaDA RaceCar
+-- "HS" type (Android and iOS app) and of the response frames of the car. The HS datagrams are
+-- NOT encrypted; they are decoded directly.
+--
+-- Datagram layout (16 bytes starting at the command byte):
+--   0      command: 0xaa = Connect, 0xbb = Control
+--   1..2   header 0x11 0x11
+--   3..4   device id (little endian)
+--   5..6   app id (little endian)
+--   7      throttle   (Control)
+--   8      steering   (Control)
+--   9      lights     (Control)
+--   10     offset     (Control) - value the throttle/steering bytes are XORed with
+--   11     sequence id
+--   12..15 footer 0xcc 0xb8 0x92 0xb0 (0xa0 as last byte for Connect)
+--
+-- Structure of this file: preamble -> constants/tables -> helpers -> dissector -> registration.
 
--- extend package.path with current path
-package.path = package.path .. ";" .. bindir .. "/?.lua"
+-- Preamble: make the helper modules next to this script loadable with require(). Wireshark
+-- only loads the scripts, it does not add their folder to package.path.
+local script = debug.getinfo(1, "S").source:sub(2)
+local bindir = script:match("(.+)[/\\]") or "."          -- folder of this script
+local searchPath = ";" .. bindir .. "/?.lua"
+if not package.path:find(searchPath, 1, true) then      -- do not append the same path twice
+    package.path = package.path .. searchPath
+end
 
--- load modul
 local BleTools = require("BLE_Tools")
 
--- Define a new protocol for post-dissector usage.
+-- Protocol object of this post-dissector (used as the owner of the tree items).
 local CaDADissector = Proto("CaDA_HS", "Global Frame Analyzer for Bluetooth LE from CaDA - Type HS")
 
-function CaDADissector.dissector(buffer, pinfo, tree)
+-- Filterable fields (cada_hs.cmd, cada_hs.throttle, ...). The tree items that show them keep
+-- their text; platform and payload are added as hidden items. throttle and steering are the
+-- decoded values (see decodeControl), the others are the raw bytes.
+local pf = {
+    platform = ProtoField.string("cada_hs.platform", "Platform"),
+    payload = ProtoField.bytes("cada_hs.payload", "Raw datagram"),
+    datagram = ProtoField.string("cada_hs.datagram", "Datagram"),
+    cmd = ProtoField.uint8("cada_hs.cmd", "Command", base.HEX),
+    id1 = ProtoField.uint8("cada_hs.id1", "Id (1st header byte)", base.HEX),
+    id2 = ProtoField.uint8("cada_hs.id2", "Id (2nd header byte)", base.HEX),
+    device_id = ProtoField.uint16("cada_hs.device_id", "Device id", base.HEX),
+    app_id = ProtoField.uint16("cada_hs.app_id", "App id", base.HEX),
+    throttle = ProtoField.int32("cada_hs.throttle", "Throttle"),
+    steering = ProtoField.int32("cada_hs.steering", "Steering"),
+    lights = ProtoField.int8("cada_hs.lights", "Lights"),
+    offset = ProtoField.uint8("cada_hs.offset", "Offset", base.HEX),
+    seq = ProtoField.uint8("cada_hs.seq", "Sequence id", base.HEX),
+}
+CaDADissector.fields = { pf.platform, pf.payload, pf.datagram, pf.cmd, pf.id1, pf.id2, pf.device_id,
+                         pf.app_id, pf.throttle, pf.steering, pf.lights, pf.offset, pf.seq }
 
-    -- locate the BLE link layer packet (independent of the capture link type);
-    -- ll starts at the access address, advLen is the length of the advertising data
+local MANUFACTURER = "CaDA HS"
+local COMMAND_CONNECT = 0xaa
+local COMMAND_CONTROL = 0xbb
+
+-- Offsets are relative to the first advertising data byte.
+local ADV_DATA = BleTools.ADV_DATA_OFFSET
+
+-- Device response (the car answers the app): 14 bytes starting at offset 4.
+local RESPONSE_ADV_LEN = 31
+local RESPONSE_PATTERN = {
+    { 0, 0x11 },    -- AD length: 17
+    { 1, 0xff },    -- AD type: Manufacturer Specific (0xff)
+    { 2, 0xaa },    -- company id 0x11aa
+    { 3, 0x11 },
+    { 4, 0x11 },    -- CaDA identifier
+}
+local RESPONSE_RAW_OFFSET = ADV_DATA + 4
+local RESPONSE_RAW_LENGTH = 14
+
+-- Variant table of the app datagrams (Android / iOS), tried in this order.
+--   platform   shown in the Info column
+--   advLen     exact length of the advertising data
+--   pattern    identifying bytes as {offset, value} pairs (everything else is "don't care")
+--   rawOffset  where the 16 byte datagram starts
+--   rawLength  length of the datagram
+local VARIANTS = {
+    {
+        platform = "Android",
+        advLen = 23,
+        pattern = {
+            { 3, 0x13 },    -- AD length: 19
+            { 4, 0xff },    -- AD type: Manufacturer Specific (0xff)
+            { 5, 0x00 },    -- company id 0xc200
+            { 6, 0xc2 },
+            -- offset 7: command (0xbb control or 0xaa connect), not checked
+            { 8, 0x11 },    -- header 0x11 0x11
+            { 9, 0x11 },
+            -- offset 10..13: device id and app id, not checked
+            -- offset 14..18: throttle, steering, lights, offset, sequence id, not checked
+            { 19, 0xcc },   -- footer 0xcc 0xb8 0x92
+            { 20, 0xb8 },
+            { 21, 0x92 },
+            -- offset 22: last footer byte (0xb0 control or 0xa0 connect), not checked
+        },
+        rawOffset = ADV_DATA + 7,
+        rawLength = 16,
+    },
+    {
+        platform = "iOS",
+        advLen = 31,
+        pattern = {
+            { 3, 0x1b },    -- AD length: 27
+            { 4, 0x03 },    -- AD type: Complete List of 16-bit Service Class UUIDs (0x03)
+            { 5, 0xc0 },    -- CaDA identifier 0xc000
+            { 6, 0x00 },
+            -- offset 7: command (0xbb control or 0xaa connect), not checked
+            { 8, 0x11 },    -- header 0x11 0x11
+            { 9, 0x11 },
+            -- offset 10..18: device id, app id, throttle .. sequence id, not checked
+            { 19, 0xcc },   -- footer 0xcc 0xb8 0x92
+            { 20, 0xb8 },
+            { 21, 0x92 },
+            -- offset 22..30: last footer byte and trailing bytes, not checked
+        },
+        rawOffset = ADV_DATA + 7,
+        rawLength = 16,
+    },
+}
+
+--- Tell whether the frame is a device response.
+local function isDeviceResponse(ll, advLen)
+    return advLen == RESPONSE_ADV_LEN and BleTools.matches(ll, ADV_DATA, RESPONSE_PATTERN)
+end
+
+--- Find the variant row whose identifier matches the advertising data.
+-- @return the matching row of VARIANTS or nil
+local function findVariant(ll, advLen)
+    for _, variant in ipairs(VARIANTS) do
+        if advLen == variant.advLen and BleTools.matches(ll, ADV_DATA, variant.pattern) then
+            return variant
+        end
+    end
+    return nil
+end
+
+--- Decode the control values of a Control datagram.
+-- The throttle and steering bytes are XORed with the offset byte; the real value is the
+-- result minus 0x80 (throttle: negated, so that "forward" is positive).
+-- @param rawdata TvbRange of the 16 byte datagram
+-- @return table with the numbers (throttle, steering, lights) and the display texts
+--         (seq, offset, throttle, steering, lights; like "005[0x05]", the numeric part padded)
+local function decodeControl(rawdata)
+    local seqId = rawdata(11, 1):uint() & 0xff
+    local seqIdName = string.format("%03d", seqId) .. "[0x" .. string.format("%02x", seqId) .. "]"
+
+    local offset = rawdata(10, 1):int() & 0xff
+    local offsetString = string.format("%03d", offset) .. "[0x" .. string.format("%02x", offset) .. "]"
+
+    local throttle = -(((rawdata(7, 1):int() & 0xff) ~ offset) - 0x80)
+    local throttleString = string.format("%4d", throttle) .. "[0x" .. string.format("%02x", throttle & 0xff) .. "]"
+
+    local steering = ((rawdata(8, 1):int() & 0xff) ~ offset) - 0x80
+    local steeringString = string.format("%4d", steering) .. "[0x" .. string.format("%02x", steering & 0xff) .. "]"
+
+    -- Lights are shown as the signed byte; a negative value is printed as 64 bit hex ("0xffff...")
+    -- like it always was.
+    local lights = rawdata(9, 1):int()
+    local lightsString = lights .. "[0x" .. string.format("%x", lights) .. "]"
+
+    return {
+        throttle = throttle, steering = steering, lights = lights,
+        seqText = seqIdName, offsetText = offsetString,
+        throttleText = throttleString, steeringText = steeringString, lightsText = lightsString,
+    }
+end
+
+--- Add the packet tree of an app datagram (Connect and Control share it).
+-- @param tree         tree passed to the dissector function
+-- @param variant      row of VARIANTS
+-- @param frameinfo    Info text (also the name of the synthetic data sources)
+-- @param datagramname name of the datagram, e.g. "Connect"
+-- @param rawdata      TvbRange of the 16 byte datagram
+-- @param control      nil for Connect; for Control the table of decodeControl(); adds the
+--                     Throttle/Steering/Lights/Offset lines
+local function addTree(tree, variant, frameinfo, datagramname, rawdata, control)
+    -- "Payload" subtree with the raw datagram.
+    local tvb1 = ByteArray.tvb(rawdata:bytes(), frameinfo)
+    local subtree1 = tree:add(CaDADissector, tvb1(), variant.platform .. " - " .. MANUFACTURER .. " - Payload")
+    subtree1:add(tvb1(), "Len: " .. tvb1():len())
+    BleTools.addHidden(subtree1, pf.payload, tvb1())
+
+    -- Second subtree with the decoded fields (the same bytes in a data source of its own).
+    local tvb2 = ByteArray.tvb(rawdata:bytes(), frameinfo)
+    local subtree2 = tree:add(CaDADissector, tvb2(), frameinfo)
+    subtree2:add(pf.datagram, tvb2(), datagramname, datagramname .. " - Len: " .. tvb2():len())
+    BleTools.addHidden(subtree2, pf.platform, tvb2(), variant.platform)
+    subtree2:add(pf.cmd, tvb2(0, 1), tvb2(0, 1):uint(), "Cmd: 0x" .. tvb2(0, 1))
+    subtree2:add(pf.id1, tvb2(1, 1), tvb2(1, 1):uint(), "Id: 0x" .. tvb2(1, 1))
+    subtree2:add(pf.id2, tvb2(2, 1), tvb2(2, 1):uint(), "Id: 0x" .. tvb2(2, 1))
+    -- Ids are little endian: the bytes are shown swapped.
+    subtree2:add_le(pf.device_id, tvb2(3, 2), tvb2(3, 2):le_uint(), "Device Id: 0x" .. tvb2(4, 1) .. tvb2(3, 1))
+    subtree2:add_le(pf.app_id, tvb2(5, 2), tvb2(5, 2):le_uint(), "App Id: 0x" .. tvb2(6, 1) .. tvb2(5, 1))
+    if control then
+        subtree2:add(pf.throttle, tvb2(7, 1), control.throttle, "Throttle: " .. control.throttleText)
+        subtree2:add(pf.steering, tvb2(8, 1), control.steering, "Steering: " .. control.steeringText)
+        subtree2:add(pf.lights, tvb2(9, 1), control.lights, "Lights: " .. control.lightsText)
+        subtree2:add(pf.offset, tvb2(10, 1), tvb2(10, 1):uint(), "Offset: 0x" .. tvb2(10, 1))
+    end
+    subtree2:add(pf.seq, tvb2(11, 1), tvb2(11, 1):uint(), "Sequence Id: 0x" .. tvb2(11, 1))
+end
+
+--- Show a device response frame (Info column and packet tree).
+local function dissectResponse(ll, pinfo, tree)
+    local datagramname = "Response"
+    local frameinfo = "Device - " .. MANUFACTURER .. " - " .. datagramname
+    pinfo.cols.info = frameinfo
+
+    if tree then
+        local tvb = ByteArray.tvb(ll(RESPONSE_RAW_OFFSET, RESPONSE_RAW_LENGTH):bytes(), frameinfo)
+        local subtree = tree:add(CaDADissector, tvb(), frameinfo)
+        subtree:add(pf.datagram, tvb(), datagramname, datagramname .. " - Len: " .. tvb():len())
+        BleTools.addHidden(subtree, pf.platform, tvb(), "Device")
+        -- Ids are little endian: the bytes are shown swapped.
+        subtree:add_le(pf.app_id, tvb(1, 2), tvb(1, 2):le_uint(), "App Id: 0x" .. tvb(2, 1) .. tvb(1, 1))
+        subtree:add_le(pf.device_id, tvb(3, 2), tvb(3, 2):le_uint(), "Device ID: 0x" .. tvb(4, 1) .. tvb(3, 1))
+    end
+end
+
+--- Show an app datagram of the given variant (only Connect and Control are known).
+local function dissectDatagram(ll, variant, pinfo, tree)
+    local rawdata = ll(variant.rawOffset, variant.rawLength)
+    local command = rawdata(0, 1):uint()
+
+    local datagramname, control
+    if command == COMMAND_CONNECT then
+        datagramname = "Connect"
+    elseif command == COMMAND_CONTROL then
+        control = decodeControl(rawdata)
+        datagramname = "Control Seq=" .. control.seqText .. " O=" .. control.offsetText ..
+            " T=" .. control.throttleText .. " S=" .. control.steeringText .. " L=" .. control.lightsText
+    else
+        return  -- any other command: leave the frame alone (no Info change, no tree)
+    end
+
+    local frameinfo = variant.platform .. " - " .. MANUFACTURER .. " - " .. datagramname
+    pinfo.cols.info = frameinfo
+    if tree then
+        addTree(tree, variant, frameinfo, datagramname, rawdata, control)
+    end
+end
+
+--- Post-dissector function, called by Wireshark for every frame.
+-- Leaves frames alone that are not CaDA HS advertising packets (returns 0).
+function CaDADissector.dissector(buffer, pinfo, tree)
+    -- Locate the BLE link layer packet (independent of the capture link type);
+    -- ll starts at the access address, advLen is the length of the advertising data.
     local ll, advLen = BleTools.getLinkLayer()
     if not ll then
         return 0
     end
 
-    -- advertisingdata starts here (relative to the access address)
-    local advDataOffset = BleTools.ADV_DATA_OFFSET
-
-    local cada_Device_Response = 
-        advLen == 31 and
-        ll(advDataOffset + 0,  1):uint() == 0x11 and -- Length: 17
-        ll(advDataOffset + 1,  1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        ll(advDataOffset + 2,  1):uint() == 0xaa and -- Company Id 0x11aa
-        ll(advDataOffset + 3,  1):uint() == 0x11 and
-        ll(advDataOffset + 4,  1):uint() == 0x11 and -- CaDA identifier
-        true                                             -- enabled
-
-    local cada_Android_Identifier = 
-        advLen == 23 and
-        ll(advDataOffset +  3, 1):uint() == 0x13 and -- Length: 19
-        ll(advDataOffset +  4, 1):uint() == 0xff and -- type: Manufacturer Specific (0xff) 
-        ll(advDataOffset +  5, 1):uint() == 0x00 and -- Company Id 0xc200
-        ll(advDataOffset +  6, 1):uint() == 0xc2 and -- 
-        -- ll(advDataOffset +  7, 1):uint() == 0xbb and -- 0xbb (command) or 0x 0xaa (connect)
-        ll(advDataOffset +  8, 1):uint() == 0x11 and -- header: 0x11
-        ll(advDataOffset +  9, 1):uint() == 0x11 and -- 
-        -- ll(advDataOffset + 10, 1):uint() == 0xc9 and -- device id 0xc1c9
-        -- ll(advDataOffset + 11, 1):uint() == 0xc1 and -- 
-        -- ll(advDataOffset + 12, 1):uint() == 0x79 and -- app id 0x2979
-        -- ll(advDataOffset + 13, 1):uint() == 0x29 and -- 
-        -- ll(advDataOffset + 14, 1):uint() == 0x00 and -- aa - trottle
-        -- ll(advDataOffset + 15, 1):uint() == 0x00 and -- bb - steering
-        -- ll(advDataOffset + 16, 1):uint() == 0x00 and -- cc - lights
-        -- ll(advDataOffset + 17, 1):uint() == 0x00 and -- dd - offset
-        -- ll(advDataOffset + 18, 1):uint() == 0x00 and -- ee - sequence id
-        ll(advDataOffset + 19, 1):uint() == 0xcc and -- footer 0xcc
-        ll(advDataOffset + 20, 1):uint() == 0xb8 and -- footer 0xb8
-        ll(advDataOffset + 21, 1):uint() == 0x92 and -- footer 0x92
-        -- ll(advDataOffset + 22, 1):uint() == 0xb0 and -- footer 0xb0 (command) or 0x 0xa0 (connect)
-        true                                              -- enabled
-
-    local cada_iOS_Identifier =
-        advLen == 31 and
-        ll(advDataOffset +  3,  1):uint() == 0x1b and -- Length: 27
-        ll(advDataOffset +  4,  1):uint() == 0x03 and -- type: Complete List of 16-bit Service Class UUIDs (0x03)
-        ll(advDataOffset +  5,  1):uint() == 0xc0 and -- CaDA identifier 0xc000
-        ll(advDataOffset +  6,  1):uint() == 0x00 and
-        -- ll(advDataOffset +  7,  1):uint() == 0xbb and -- 0xbb (command) or 0x 0xaa (connect)
-        ll(advDataOffset +  8,  1):uint() == 0x11 and -- header: 0x11
-        ll(advDataOffset +  9,  1):uint() == 0x11 and --
-        -- ll(advDataOffset + 10,  1):uint() == 0xc9 and -- device id 0xc1c9
-        -- ll(advDataOffset + 11,  1):uint() == 0xc1 and --
-        -- ll(advDataOffset + 12,  1):uint() == 0x17 and -- app id 0xc117
-        -- ll(advDataOffset + 13,  1):uint() == 0x7f and --
-        -- ll(advDataOffset + 14,  1):uint() == 0xe4 and -- aa - trottle
-        -- ll(advDataOffset + 15,  1):uint() == 0xe4 and -- bb - steering
-        -- ll(advDataOffset + 16,  1):uint() == 0x00 and -- cc - lights
-        -- ll(advDataOffset + 17,  1):uint() == 0x64 and -- dd - offset
-        -- ll(advDataOffset + 18,  1):uint() == 0xa1 and -- ee - sequence id
-        ll(advDataOffset + 19,  1):uint() == 0xcc and -- footer 0xcc 
-        ll(advDataOffset + 20,  1):uint() == 0xb8 and -- footer 0xb8
-        ll(advDataOffset + 21,  1):uint() == 0x92 and -- footer 0x92
-        -- ll(advDataOffset + 22,  1):uint() == 0xb0 and -- footer 0xb0 (command) or 0x 0xa0 (connect)
-        -- ll(advDataOffset + 23,  1):uint() == 0xef and -- 
-        -- ll(advDataOffset + 24,  1):uint() == 0xf2 and -- 
-        -- ll(advDataOffset + 25,  1):uint() == 0xc5 and -- 
-        -- ll(advDataOffset + 26,  1):uint() == 0x67 and -- 
-        -- ll(advDataOffset + 27,  1):uint() == 0x8f and -- 
-        -- ll(advDataOffset + 28,  1):uint() == 0x9f and -- 
-        -- ll(advDataOffset + 29,  1):uint() == 0xf1 and -- 
-        -- ll(advDataOffset + 30,  1):uint() == 0xf8 and -- 
-        true                                              -- enabled
-
-    if not (cada_Device_Response or cada_Android_Identifier or cada_iOS_Identifier) then 
-		return 0
-	end
-
-    local manufacturer = "CaDA HS"
-
-    if cada_Device_Response then
-
-        local rawDataOffset = advDataOffset + 4
-        local rawDataLength = 14
-        local platform = "Device"
-
-        datagramname = "Response"
-
-        local frameinfo = platform .. " - " .. manufacturer .." - " .. datagramname
-        pinfo.cols.info = frameinfo
-     
-        local rawData = ll(rawDataOffset, rawDataLength):bytes()
-
-        if tree and rawData then
-            local tvb2 = ByteArray.tvb(rawData, frameinfo)
-            local subtree2 = tree:add(CaDADissector, tvb2(), frameinfo)
-            subtree2:add(tvb2(), datagramname .. " - Len: " .. tvb2():len())
-            subtree2:add(tvb2( 1, 2), "App Id: 0x" .. tvb2( 2, 1) .. tvb2( 1, 1))
-            subtree2:add(tvb2( 3, 2), "Device ID: 0x" .. tvb2( 4, 1) .. tvb2( 3, 1))
-        end
-
-    else
-
-        local platform = "unknown"
-        local rawDataOffset
-        local rawDataLength
-
-        -- Android
-        if cada_Android_Identifier then
-
-            rawDataOffset = advDataOffset + 7
-            rawDataLength = 16
-    		platform = "Android"
-
-        -- iOS
-        elseif cada_iOS_Identifier then
-
-            rawDataOffset = advDataOffset + 7
-            rawDataLength = 16
-    		platform = "iOS"
-            
-        end
-
-        local rawdata = ll(rawDataOffset, rawDataLength)
-
-        local command = rawdata(0, 1):uint()
-        
-        if command == 0xaa then
-
-            local datagramname = "Connect"
-
-            local frameinfo = platform .. " - " .. manufacturer .." - " .. datagramname
-            pinfo.cols.info = frameinfo
-
-            if tree then
-                local tvb1 = ByteArray.tvb(rawdata:bytes(), frameinfo)
-                local subtree1 = tree:add(CaDADissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
-                subtree1:add(tvb1(), "Len: " .. tvb1():len())
-
-                local tvb2 = ByteArray.tvb(rawdata:bytes(), frameinfo)
-                local subtree2 = tree:add(CaDADissector, tvb2(), frameinfo)
-                subtree2:add(tvb2(), datagramname .. " - Len: " .. tvb2():len())
-                subtree2:add(tvb2( 0, 1), "Cmd: 0x" .. tvb2( 0, 1))
-                subtree2:add(tvb2( 1, 1), "Id: 0x" .. tvb2( 1, 1))
-                subtree2:add(tvb2( 2, 1), "Id: 0x" .. tvb2( 2, 1))
-                subtree2:add(tvb2( 3, 2), "Device Id: 0x" .. tvb2( 4, 1) .. tvb2( 3, 1))
-                subtree2:add(tvb2( 5, 2), "App Id: 0x" .. tvb2( 6, 1) .. tvb2( 5, 1))
-                -- subtree2:add(tvb2( 7, 1), "Throttle: 0x" .. tvb2( 7, 1))
-                -- subtree2:add(tvb2( 8, 1), "Steering: 0x" .. tvb2( 8, 1))
-                -- subtree2:add(tvb2( 9, 1), "Lights: 0x" .. tvb2( 9, 1))
-                -- subtree2:add(tvb2(10, 1), "Offset: 0x" .. tvb2(10, 1))
-                subtree2:add(tvb2(11, 1), "Sequence Id: 0x" .. tvb2(11, 1))
-            end                
-        elseif command == 0xbb then
-            local seqId_RAW = rawdata(11, 1)
-            local seqId = seqId_RAW:uint() & 0xff
-            local seqIdName = string.format("%03d", seqId) .. "[0x" .. string.format("%02x", seqId) .. "]"
-
-            local offset_RAW = rawdata(10, 1)
-            local offset = offset_RAW:int() & 0xff
-            local offsetString =  string.format("%03d", offset) .. "[0x" .. string.format("%02x", offset) .. "]"
-
-            local throttle_RAW = rawdata(7, 1)
-            local throttle = -(((throttle_RAW:int() & 0xff) ~ offset) - 0x80)
-            local throttleString = string.format("%4d", throttle) .. "[0x" .. string.format("%02x", throttle & 0xff) .. "]"
-
-            local steering_RAW = rawdata(8, 1)
-            local steering = ((steering_RAW :int() & 0xff) ~ offset) - 0x80
-            local steeringString = string.format("%4d", steering) .. "[0x" .. string.format("%02x", steering & 0xff) .. "]"
-
-            local lights_RAW = rawdata(9, 1)
-            local lights = lights_RAW:int()
-            local lightsString = lights .. "[0x" .. string.format("%x", lights) .. "]"
-
-            local datagramname = "Control Seq=" .. seqIdName .. " O=" .. offsetString .. " T=" .. throttleString .. " S=" .. steeringString .. " L=" .. lightsString
-
-            local frameinfo = platform .. " - " .. manufacturer .." - " .. datagramname
-            pinfo.cols.info = frameinfo
-
-            if tree then
-                local tvb1 = ByteArray.tvb(rawdata:bytes(), frameinfo)
-                local subtree1 = tree:add(CaDADissector, tvb1(), platform .. " - " .. manufacturer .. " - Payload")
-                subtree1:add(tvb1(), "Len: " .. tvb1():len())
-
-                local tvb2 = ByteArray.tvb(rawdata:bytes(), frameinfo)
-                local subtree2 = tree:add(CaDADissector, tvb2(), frameinfo)
-                subtree2:add(tvb2(), datagramname .. " - Len: " .. tvb2():len())
-                subtree2:add(tvb2( 0, 1), "Cmd: 0x" .. tvb2( 0, 1))
-                subtree2:add(tvb2( 1, 1), "Id: 0x" .. tvb2( 1, 1))
-                subtree2:add(tvb2( 2, 1), "Id: 0x" .. tvb2( 2, 1))
-                subtree2:add(tvb2( 3, 2), "Device Id: 0x" .. tvb2( 4, 1) .. tvb2( 3, 1))
-                subtree2:add(tvb2( 5, 2), "App Id: 0x" .. tvb2( 6, 1) .. tvb2( 5, 1))
-                subtree2:add(tvb2( 7, 1), "Throttle: " .. throttleString)
-                subtree2:add(tvb2( 8, 1), "Steering: " .. steeringString)
-                subtree2:add(tvb2( 9, 1), "Lights: " .. lightsString)
-                subtree2:add(tvb2(10, 1), "Offset: 0x" .. tvb2(10, 1))
-                subtree2:add(tvb2(11, 1), "Sequence Id: 0x" .. tvb2(11, 1))
-            end
-
-        else
-
-        end
+    if isDeviceResponse(ll, advLen) then
+        dissectResponse(ll, pinfo, tree)
+        return
     end
+
+    local variant = findVariant(ll, advLen)
+    if not variant then
+        return 0
+    end
+    dissectDatagram(ll, variant, pinfo, tree)
 end
 
 -- Register as a post-dissector; this will run for every frame.
 register_postdissector(CaDADissector)
-
-
