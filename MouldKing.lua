@@ -85,13 +85,15 @@ local VARIANTS = {
         fourChannel = "JIE-STAR 4CH[1]",
     },
     {
-        -- TODO: the payload length of the iOS app is unverified and needs a real iOS capture.
-        -- Only 18 bytes follow the identifier (advLen 23) but 26 bytes are read, so the frame
-        -- does not fit and is skipped (see the bounds check in the dissector).
+        -- iOS cannot send manufacturer data: the app puts the 27 byte payload into an AD structure of
+        -- type 0x03 (16-bit Service Class UUIDs): `02 01 1a` Flags + `1b 03` + payload (advLen 31).
+        -- Verified with a real iOS capture: decrypts with ctx2 0x25, header offset 13 (MouldKing identifier).
         platform = "iOS",
         manufacturer = "MouldKing",
-        advLen = 23,
+        advLen = 31,
         pattern = {
+            { 3, 0x1b },    -- AD length: 27
+            { 4, 0x03 },    -- AD type: 16-bit Service Class UUIDs (0x03)
             { 5, 0xf9 },    -- identifier (first bytes of the encrypted payload)
             { 6, 0x08 },
             { 7, 0x49 },
@@ -107,7 +109,7 @@ local VARIANTS = {
         fillOffset = ADV_DATA + 23,
         fill = { 0x12, 0x13 },
         ctx2 = CTX_VALUE_2_MK,
-        fourChannel = nil,
+        fourChannel = "JIE-STAR 4CH[1]",
     },
     {
         platform = "Android",
@@ -158,6 +160,60 @@ local VARIANTS = {
         headerOffset = 15,
         fillOffset = ADV_DATA + 25,
         fill = { 0x13, 0x14 },
+        ctx2 = CTX_VALUE_2_JS_6F,
+        fourChannel = "JIE-STAR 4CH[3]",
+    },
+    {
+        -- iOS cannot send manufacturer data: the app puts the 27 byte payload into an AD structure of
+        -- type 0x03 (16-bit Service Class UUIDs): `02 01 1a` Flags + `1b 03` + payload (advLen 31).
+        -- Verified with a real iOS capture: decrypts with ctx2 0x26 (like the Android JIE-STAR ee.. identifier), header offset 13.
+        platform = "iOS",
+        manufacturer = "MouldKing",
+        advLen = 31,
+        pattern = {
+            { 3, 0x1b },    -- AD length: 27
+            { 4, 0x03 },    -- AD type: 16-bit Service Class UUIDs (0x03)
+            { 5, 0xc0 },    -- identifier (first bytes of the encrypted payload)
+            { 6, 0x3d },
+            { 7, 0xca },
+            { 8, 0x8f },
+            { 9, 0xcc },
+            { 10, 0x33 },
+            { 11, 0x84 },
+            { 12, 0x0e },
+        },
+        rawOffset = ADV_DATA + 5,
+        rawLength = 26,
+        headerOffset = 13,
+        fillOffset = ADV_DATA + 23,
+        fill = { 0x12, 0x13 },
+        ctx2 = CTX_VALUE_2_JS_EE,
+        fourChannel = "JIE-STAR 4CH[2]",
+    },
+    {
+        -- iOS cannot send manufacturer data: the app puts the 27 byte payload into an AD structure of
+        -- type 0x03 (16-bit Service Class UUIDs): `02 01 1a` Flags + `1b 03` + payload (advLen 31).
+        -- Verified with a real iOS capture: decrypts with ctx2 0x27 (like the Android JIE-STAR 6f.. identifier), header offset 13.
+        platform = "iOS",
+        manufacturer = "MouldKing",
+        advLen = 31,
+        pattern = {
+            { 3, 0x1b },    -- AD length: 27
+            { 4, 0x03 },    -- AD type: 16-bit Service Class UUIDs (0x03)
+            { 5, 0xd7 },    -- identifier (first bytes of the encrypted payload)
+            { 6, 0x2e },
+            { 7, 0x4b },
+            { 8, 0xeb },
+            { 9, 0xb5 },
+            { 10, 0xb4 },
+            { 11, 0xbb },
+            { 12, 0x60 },
+        },
+        rawOffset = ADV_DATA + 5,
+        rawLength = 26,
+        headerOffset = 13,
+        fillOffset = ADV_DATA + 23,
+        fill = { 0x12, 0x13 },
         ctx2 = CTX_VALUE_2_JS_6F,
         fourChannel = "JIE-STAR 4CH[3]",
     },
@@ -274,8 +330,8 @@ local function describeDatagram(variant, datagram, sizeName)
     local command = datagram:get_index(0)
     local length = datagram:len()
 
-    -- Default (also used by the iOS variant for the JIE-STAR commands, which it does not
-    -- know): only the size, the command byte and the length.
+    -- Default for datagrams that are not (or not for this variant) in COMMANDS: only the size,
+    -- the command byte and the length.
     local manufacturer = variant.manufacturer
     local name = sizeName .. " - Command: " .. string.format("0x%02x", command) .. " - Length: " .. length
     local kind = nil
@@ -322,7 +378,7 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
     end
 
     -- Bounds check: the range read below and the fill bytes must lie inside the packet, otherwise
-    -- Wireshark raises "Range is out of bounds" (this is what the iOS variant used to do).
+    -- Wireshark raises "Range is out of bounds" (e.g. for a truncated capture).
     if variant.rawOffset + variant.rawLength > ll:len() or variant.fillOffset + 2 > ll:len() then
         return 0
     end

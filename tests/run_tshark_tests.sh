@@ -20,7 +20,12 @@
 #   9. optional (COMPARE_MAIN=1): the dissectors from git branch main produce the same Info
 #      column AND the same packet tree (tshark -V) as the current code, for every variant,
 #      the real capture and a generated command sweep (all commands / lengths / variants,
-#      see make_pcaps.py - generated on the fly, not committed as capture).
+#      see make_pcaps.py - generated on the fly, not committed as capture). The verified iOS rows are
+#      the only deliberate difference: main does not decode them, they are checked separately.
+#  10. the verified iOS rows: a generated iOS sweep (MouldKing / JIE-STAR / PowerBox) is decoded completely,
+#      main decodes none of it, and (optional) a local iOS capture is decoded without leftovers; the
+#      capture is NOT part of the repository: set IOS_CAPTURE=/path/to/bleadvert.iOS.pcapng (default:
+#      ../../tasks/022-ios-variants/bleadvert.iOS.pcapng next to the repository, skipped when missing).
 #
 # Environment: TSHARK (default "tshark"), PYTHON (default "python3"), LUAC (default "luac5.4").
 # Needs Wireshark with Lua support (Lua 5.3+ syntax is used by Crypt_Tools.lua).
@@ -32,6 +37,8 @@ REPO="$(dirname "$HERE")"
 TSHARK="${TSHARK:-tshark}"
 PYTHON="${PYTHON:-python3}"
 LUAC="${LUAC:-luac5.4}"
+# Variants whose iOS row was verified/changed on purpose: main does not decode them like the current code.
+IOS_CHANGED=" mk_ios mk_ios_mk6 mk_ios_js_ee mk_ios_js_6f powerbox_ios "
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -93,11 +100,13 @@ for info_file in "$WORK"/pcaps/*.info; do
     [ "$i272" == "$i256" ];         check "$name: DLT 272 == DLT 256" $?
     [ "$i272" == "$i251" ];         check "$name: DLT 272 == DLT 251" $?
     if [ -n "$OLD_DIR" ]; then
-        old272="$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")"
-        [ "$i272" == "$old272" ];   check "$name: Info new == original (main) on DLT 272" $?
-        # The MouldKing iOS frame raised a Lua error on main (see make_pcaps.py): its tree differs
-        # on purpose and is checked in the sweep section instead.
-        if [ "$name" != "mk_ios" ]; then
+        if [[ "$IOS_CHANGED" == *" $name "* ]]; then
+            # main leaves these frames alone: the Info column is the plain btle text there
+            [[ "$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")" != *"iOS - "* ]]
+            check "$name: main does not decode the frame (new iOS row on purpose)" $?
+        else
+            old272="$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")"
+            [ "$i272" == "$old272" ];   check "$name: Info new == original (main) on DLT 272" $?
             [ "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$REPO")" == "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")" ]
             check "$name: packet tree (-V) new == original (main) on DLT 272" $?
         fi
@@ -157,12 +166,41 @@ if [ -n "$OLD_DIR" ]; then
     check "sweep: Info new == original (main)" $?
     [ "$(tree_of "$SWEEP" "$REPO")" == "$(tree_of "$SWEEP" "$OLD_DIR")" ]
     check "sweep: packet tree (-V) new == original (main)" $?
-    # MouldKing iOS: main raises a Lua error, the new code leaves the frames alone (bounds guard)
-    IOS="$WORK/pcaps/sweep_mk_ios_dlt272.pcap"
-    [ "$(info_of "$IOS" "$REPO")" == "$(info_of "$IOS" "$OLD_DIR")" ]
-    check "sweep MouldKing iOS: Info new == original (main)" $?
-    tree_of "$IOS" "$OLD_DIR" | grep -q "Lua Error"
-    check "sweep MouldKing iOS: original (main) raises a Lua error (known bug)" $?
+fi
+
+echo "== iOS sweep (verified iOS rows: all MouldKing / JIE-STAR identifiers and PowerBox shape B)"
+IOS="$WORK/pcaps/sweep_ios_dlt272.pcap"
+read -r want_mk want_pb < "$WORK/pcaps/sweep_ios.counts"
+ios_info="$(info_of "$IOS" "$REPO")"
+# PowerBox shows unknown commands as "iOS - Unknown - unknown - 0x.."; MouldKing as "iOS - Unknown - Unknown - ..".
+n_pb="$(grep -cE 'iOS - (PowerBox - |Unknown - unknown - 0x)' <<< "$ios_info")"
+n_mk="$(( $(grep -c 'iOS - ' <<< "$ios_info") - n_pb ))"
+echo "     $n_mk MouldKing/JIE-STAR frames (expected $want_mk), $n_pb PowerBox frames (expected $want_pb)"
+[ "$n_mk" -eq "$want_mk" ]; check "iOS sweep: every MouldKing / JIE-STAR frame is decoded as iOS - MouldKing/JIE-STAR" $?
+[ "$n_pb" -eq "$want_pb" ]; check "iOS sweep: every shape B frame is decoded as iOS - PowerBox" $?
+! grep -q "Decryption failed" <<< "$ios_info"; check "iOS sweep: no decryption failure" $?
+if [ -n "$OLD_DIR" ]; then
+    [[ "$(info_of "$IOS" "$OLD_DIR")" != *"iOS - "* ]]; check "iOS sweep: main decodes none of the frames (they are new)" $?
+fi
+
+echo "== local iOS capture (optional, not part of the repository)"
+IOS_CAPTURE="${IOS_CAPTURE:-$REPO/../../tasks/022-ios-variants/bleadvert.iOS.pcapng}"
+if [ -f "$IOS_CAPTURE" ]; then
+    cap_info="$(info_of "$IOS_CAPTURE" "$REPO")"
+    n_mk="$(grep -cE 'iOS - (MouldKing|JIE-STAR) - ' <<< "$cap_info")"
+    n_pb="$(grep -cE 'iOS - PowerBox - ' <<< "$cap_info")"
+    n_pb_cmd="$(grep -cE 'iOS - PowerBox - (Connect|Command) ' <<< "$cap_info")"
+    echo "     $n_mk MouldKing/JIE-STAR frames, $n_pb PowerBox frames ($n_pb_cmd of them Connect/Command)"
+    [ "$n_mk" -gt 0 ] && [ "$n_pb" -gt 0 ]; check "iOS capture: MouldKing/JIE-STAR and PowerBox frames are decoded" $?
+    # IOS_EXPECT_MK / IOS_EXPECT_PB: optional exact frame counts (printed above, passed in by the caller)
+    if [ -n "${IOS_EXPECT_MK:-}" ]; then [ "$n_mk" -eq "$IOS_EXPECT_MK" ]; check "iOS capture: $IOS_EXPECT_MK MouldKing/JIE-STAR frames" $?; fi
+    if [ -n "${IOS_EXPECT_PB:-}" ]; then [ "$n_pb" -eq "$IOS_EXPECT_PB" ]; check "iOS capture: $IOS_EXPECT_PB PowerBox frames" $?; fi
+    ! grep -q "Decryption failed" <<< "$cap_info"; check "iOS capture: no decryption failure" $?
+    ! grep -qE '8-Byte Payload|10-Byte Payload' <<< "$cap_info"; check "iOS capture: no undecoded 8-/10-Byte payload (no PowerBox command shown as generic payload)" $?
+    ! grep -qi 'cada' <<< "$cap_info"; check "iOS capture: no CaDA dissector claims a frame" $?
+    tree_of "$IOS_CAPTURE" "$REPO" | grep -q "Lua Error"; [ $? -ne 0 ]; check "iOS capture: no 'Lua Error' in the packet trees" $?
+else
+    echo "  skip iOS capture not found ($IOS_CAPTURE, set IOS_CAPTURE=...)"
 fi
 
 echo "== filterable ProtoFields (values of the variants, see make_pcaps.py)"
@@ -177,6 +215,10 @@ P="$WORK/pcaps"
 [ "$(field_of "$P/mk_android_dlt272.pcap" mouldking.id)" == "0x7ba7" ];    check "mouldking.id" $?
 [ "$(field_of "$P/mk_android_dlt272.pcap" mouldking.platform)" == "Android" ]; check "mouldking.platform" $?
 [ "$(field_of "$P/mk_android_dlt272.pcap" mouldking.data)" == "80808080" ]; check "mouldking.data" $?
+[ "$(field_of "$P/mk_ios_dlt272.pcap" mouldking.platform)" == "iOS" ];     check "mouldking.platform (iOS)" $?
+[ "$(field_of "$P/mk_ios_js_ee_dlt272.pcap" mouldking.manufacturer)" == "JIE-STAR" ]; check "mouldking.manufacturer (iOS JIE-STAR)" $?
+[ "$(field_of "$P/powerbox_ios_dlt272.pcap" powerbox.platform)" == "iOS" ]; check "powerbox.platform (iOS)" $?
+[ "$(field_of "$P/powerbox_ios_dlt272.pcap" powerbox.cmd)" == "0x40" ];    check "powerbox.cmd (iOS)" $?
 [ "$(field_of "$P/powerbox_windows_dlt272.pcap" powerbox.cmd)" == "0x40" ]; check "powerbox.cmd" $?
 [ "$(field_of "$P/powerbox_windows_dlt272.pcap" powerbox.platform)" == "Windows" ]; check "powerbox.platform" $?
 [ "$(field_of "$P/cada_pc_android_dlt272.pcap" cada.cmd)" == "0x10" ];     check "cada.cmd" $?

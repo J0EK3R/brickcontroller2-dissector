@@ -54,7 +54,7 @@ Every dissector has the same layout: preamble (`package.path`) -> constants and 
 | `BLE_Tools.lua` | `getLinkLayer()` plus shared helpers: `matches` (identifier check from a `{offset, byte}` list), `hex`, `describe` (`Cmd[ad] ID[7b a7] ..` text), `addPayloadTrees` |
 | `Crypt_Tools.lua` | RF payload encryption / decryption (whitening, CRC) |
 | `CaDA_Tools.lua` | second encryption layer of the CaDA PC control block |
-| `MouldKing.lua` | `VARIANTS` table (Android / iOS / JieStar identifiers) and `COMMANDS` table (command byte -> name) |
+| `MouldKing.lua` | `VARIANTS` table (Android and iOS rows for the MouldKing / JieStar identifiers) and `COMMANDS` table (command byte -> name) |
 | `PowerBox.lua` | `VARIANTS` table (Android / Windows / iOS) |
 | `CaDA_RaceCar_PC.lua`, `CaDA_RaceCar_HS.lua` | device response plus `VARIANTS` table (Android / iOS) |
 
@@ -67,6 +67,26 @@ Adding a device:
 
 The code style is described by `.editorconfig` (4 spaces, no tabs). Lua 5.3 or newer is required, the
 native bit operators are used (there is no dependency on the `bit` library).
+
+## iOS
+
+iOS cannot send manufacturer data, so the BrickController2 app puts the encrypted payload into an AD
+structure of type 0x03 (16-bit Service Class UUIDs) instead. The iOS rows were verified with a real
+capture of an iOS phone (nRF52840 sniffer); decrypting with the same seed as on Android gave plausible
+datagrams (known command bytes, checksum byte, constant device id, the same PowerBox datagrams as on Android).
+The payload starts 2 bytes earlier than on Android, therefore the whitening header offset is 13 (Android: 15).
+
+| Shape | Advertising data | Decoded by | Content |
+|---|---|---|---|
+| A | advLen 31: `02 01 1a` Flags, `1b 03` + 26 byte payload area | `MouldKing.lua` (iOS rows) | MouldKing MK2.0 .. MK8.0, MK3.8, MK4.0/5.0, MK6.0 and JIE-STAR (identifier `f9 08 49 22 ..`, ctx2 0x25), JIE-STAR 4CH[2] (identifier `c0 3d ca 8f ..`, ctx2 0x26), JIE-STAR 4CH[3] (identifier `d7 2e 4b eb ..`, ctx2 0x27) |
+| B | advLen 28: `02 01 1a` Flags, `02 0a <dBm>` TX power, `15 03` + 20 byte payload area | `PowerBox.lua` (iOS row) | PowerBox connect (`a4`) and command (`40`) |
+
+Shape A and B carry the same identifier bytes: the frame shape tells MouldKing/JIE-STAR (A) and PowerBox (B)
+apart. The command bytes `a4` / `40` are JIE-STAR on shape A and PowerBox on shape B, exactly like the Android
+frame shapes. Apple "Nearby Info" frames (advLen 17) in such captures are not BrickController2 and are ignored.
+
+Not verified (no frames in the capture): the CaDA iOS rows and the older PowerBox iOS row with advLen 26 (it is kept
+unchanged and marked as unverified in `PowerBox.lua`).
 
 ## Filterable fields
 

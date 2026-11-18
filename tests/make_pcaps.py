@@ -2,7 +2,7 @@
 """
 make_pcaps.py - generate test captures for the Lua post-dissectors.
 
-Every dissector variant (MouldKing Android/iOS, CaDA PC/HS Android, PowerBox
+Every dissector variant (MouldKing Android/iOS, JIE-STAR iOS, CaDA PC/HS Android, PowerBox
 Android/Windows/iOS) is written as ONE identical BLE advertising packet in three
 capture formats, so that tests can check that the dissectors do not depend on the
 capture link type:
@@ -128,11 +128,43 @@ def mk_android():
     return FLAGS + ad(0xFF, bytes([0xF0, 0xFF]) + payload + fill)
 
 
+# iOS identifiers (first 8 payload bytes) of the MouldKing / JIE-STAR family and their ctx2; all use
+# header offset 13 (verified with a real iOS capture, see MouldKing.lua).
+IOS_MK = ([0xF9, 0x08, 0x49, 0x22, 0x47, 0xBA, 0xC4, 0xBC], 0x25)
+IOS_JS_EE = ([0xC0, 0x3D, 0xCA, 0x8F, 0xCC, 0x33, 0x84, 0x0E], 0x26)
+IOS_JS_6F = ([0xD7, 0x2E, 0x4B, 0xEB, 0xB5, 0xB4, 0xBB, 0x60], 0x27)
+
+
+def ios_adv(payload):
+    """iOS MouldKing / JIE-STAR advertising data, advLen 31: Flags + AD type 0x03 (26 byte body).
+
+    The body is the payload followed by fill bytes 0x12 0x13 .. (the fill an 8 byte payload leaves
+    visible; a 10 byte payload overwrites the first two).
+    """
+    fill = bytes(range(0x12, 0x12 + 26 - len(payload)))
+    return FLAGS + ad(0x03, payload + fill)
+
+
 def mk_ios():
-    """MouldKing iOS: connect command 0xaa, advLen 23."""
-    payload = make_payload(SEED_MK, [0xF9, 0x08, 0x49, 0x22, 0x47, 0xBA, 0xC4, 0xBC],
-                           [0xAA, 0x7B, 0xA7, 0x00, 0x00, 0x00, 0x00, 0x55], 13, 0x3F, 0x25)
-    return FLAGS + ad(0x03, payload)                     # +4 type, +5.. payload
+    """MouldKing iOS: connect command 0xaa (8 byte payload), advLen 31."""
+    ident, ctx2 = IOS_MK
+    payload = make_payload(SEED_MK, ident, [0xAA, 0x7B, 0xA7, 0x00, 0x00, 0x00, 0x00, 0x55], 13, 0x3F, ctx2)
+    return ios_adv(payload)
+
+
+def mk_ios_js(ident_ctx2):
+    """JIE-STAR 4CH iOS (identifier / ctx2 given): command 0x40 (8 byte payload), advLen 31."""
+    ident, ctx2 = ident_ctx2
+    payload = make_payload(SEED_MK, ident, [0x40, 0x7B, 0xA7, 0x80, 0x00, 0x80, 0x80, 0xBF], 13, 0x3F, ctx2)
+    return ios_adv(payload)
+
+
+def mk_ios_mk6():
+    """MouldKing iOS: MK6.0 command 0x61 (10 byte payload overwrites the fill), advLen 31."""
+    ident, ctx2 = IOS_MK
+    payload = make_payload(SEED_MK, ident, [0x61, 0x7B, 0xA7, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x9E],
+                           13, 0x3F, ctx2)
+    return ios_adv(payload)
 
 
 def powerbox_payload(first_ident, header_offset):
@@ -153,8 +185,15 @@ def powerbox_windows():
     return bytes([0x1D, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00]) + p + bytes(range(0x01, 6))
 
 
-def powerbox_ios():
-    """PowerBox iOS: Flags + TX power AD + 16-bit UUID list AD (length 0x13), advLen 26."""
+def powerbox_ios_adv(command=0x40, tx_power=0x0C):
+    """PowerBox iOS (verified): Flags + TX power AD + AD type 0x03 (length 0x15), advLen 28."""
+    data = [command, 0x7B, 0xA7, 0x01, 0x02, 0x03, 0x04, 0x05]
+    payload = make_payload(SEED_MK, IOS_MK[0], data, 13, 0x3F, 0x25)
+    return FLAGS + bytes([0x02, 0x0A, tx_power]) + ad(0x03, payload + bytes([0x12, 0x13]))
+
+
+def powerbox_ios_unverified():
+    """PowerBox iOS, old UNVERIFIED row: Flags + TX power AD + 16-bit UUID list AD (0x13), advLen 26."""
     p = powerbox_payload([0xC8], 16)
     return FLAGS + bytes([0x02, 0x0A, 0x00]) + ad(0x03, p)
 
@@ -178,13 +217,19 @@ def cada_hs_android():
 # name -> (builder, expected advertising data length, expected Info substring)
 VARIANTS = {
     "mk_android": (mk_android, 31, "Android - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Command - Cmd[66] ID[7b a7] 80 80 80 80"),
-    # MouldKing iOS: the dissector reads 26 payload bytes but only 18 exist (payload length
-    # unverified, needs a real iOS capture). Branch main raised "Range is out of bounds" for every
-    # such frame; the current code skips the frame, so the Info column keeps the btle text.
-    "mk_ios": (mk_ios, 23, "ADV_NONCONN_IND"),
+    # iOS rows verified with a real iOS capture; branch main does not decode them (advLen 23 / other
+    # shape), so run_tshark_tests.sh does not compare these with main (see IOS_CHANGED there).
+    "mk_ios": (mk_ios, 31, "iOS - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Connect - Cmd[aa] ID[7b a7]"),
+    "mk_ios_mk6": (mk_ios_mk6, 31, "iOS - MouldKing - MK6.0[1] Command - Cmd[61] ID[7b a7] 80 80 80 80 80 80"),
+    "mk_ios_js_ee": (lambda: mk_ios_js(IOS_JS_EE), 31,
+                     "iOS - JIE-STAR - JIE-STAR 4CH[2] Command - Cmd[40] ID[7b a7] 80 00 80 80"),
+    "mk_ios_js_6f": (lambda: mk_ios_js(IOS_JS_6F), 31,
+                     "iOS - JIE-STAR - JIE-STAR 4CH[3] Command - Cmd[40] ID[7b a7] 80 00 80 80"),
     "powerbox_android": (powerbox_android, 25, "Android - PowerBox - Command Cmd[40] ID[7b a7] 01 02 03 04"),
     "powerbox_windows": (powerbox_windows, 30, "Windows - PowerBox - Command Cmd[40] ID[7b a7] 01 02 03 04"),
-    "powerbox_ios": (powerbox_ios, 26, "iOS - PowerBox - Command Cmd[40]"),
+    "powerbox_ios": (powerbox_ios_adv, 28, "iOS - PowerBox - Command Cmd[40] ID[7b a7] 01 02 03 04"),
+    # old row without capture evidence, unchanged: still compared with main
+    "powerbox_ios_unverified": (powerbox_ios_unverified, 26, "iOS - PowerBox - Command Cmd[40]"),
     "cada_pc_android": (cada_pc_android, 31, "CaDA - Connect"),
     "cada_hs_android": (cada_hs_android, 23, "Android - CaDA HS - Control Seq="),
 }
@@ -327,18 +372,39 @@ def sweep_cada_hs(rng):
 
 
 def write_sweep(outdir):
-    """Write sweep_dlt272.pcap (everything that can be decoded) and sweep_mk_ios_dlt272.pcap."""
+    """Write sweep_dlt272.pcap (everything that can be decoded, Android and unverified rows) and the iOS sweep."""
     rng = random.Random(2021)                                 # fixed seed: reproducible frames
     frames = sweep_mouldking() + sweep_powerbox() + sweep_cada_pc(rng) + sweep_cada_hs(rng)
     write_pcap(os.path.join(outdir, "sweep_dlt272.pcap"), 272, [nordic_272(ll_packet(a)) for a in frames])
-    # MouldKing iOS frames (see mk_ios) are kept apart: the old dissector raised a Lua error there.
-    ios = []
-    ios_ident = [0xF9, 0x08, 0x49, 0x22, 0x47, 0xBA, 0xC4, 0xBC]
-    for command in (0xAA, 0x66, 0x40, 0xA4):
-        data = [command, 0x7B, 0xA7, 0x80, 0x80, 0x80, 0x80, 0x55]
-        p = make_payload(SEED_MK, ios_ident, data, 13, 0x3F, 0x25)
-        ios.append(FLAGS + ad(0x03, p))
-    write_pcap(os.path.join(outdir, "sweep_mk_ios_dlt272.pcap"), 272, [nordic_272(ll_packet(a)) for a in ios])
+    write_sweep_ios(outdir)
+
+
+def sweep_ios():
+    """Verified iOS frames: MouldKing / JIE-STAR (3 identifiers) and PowerBox shape B.
+
+    @return (MouldKing/JIE-STAR frames, PowerBox frames) as lists of advertising data
+    """
+    mk_frames = []
+    for ident, ctx2 in (IOS_MK, IOS_JS_EE, IOS_JS_6F):
+        for length, cmds in ((8, MK_CMDS_8), (10, MK_CMDS_10)):
+            for command in cmds:
+                for device_id in ([0x7B, 0xA7], [0x39, 0x2F]):
+                    for third in ((0x00, 0x80, 0x55) if command == 0xA4 else (0x80,)):
+                        data = [command] + device_id + [third] + [0x80, 0x80, 0x4F, 0x11, 0x22, 0x33][: length - 4]
+                        payload = make_payload(SEED_MK, ident, data[:length], 13, 0x3F, ctx2)
+                        mk_frames.append(ios_adv(payload))
+    pb_frames = [powerbox_ios_adv(command, tx_power)
+                 for command in (0xA4, 0x40, 0x99, 0x00) for tx_power in (0x0C, 0x00, 0xF4)]
+    return mk_frames, pb_frames
+
+
+def write_sweep_ios(outdir):
+    """Write sweep_ios_dlt272.pcap and sweep_ios.info ("<MouldKing/JIE-STAR frames> <PowerBox frames>")."""
+    mk_frames, pb_frames = sweep_ios()
+    frames = mk_frames + pb_frames
+    write_pcap(os.path.join(outdir, "sweep_ios_dlt272.pcap"), 272, [nordic_272(ll_packet(a)) for a in frames])
+    with open(os.path.join(outdir, "sweep_ios.counts"), "w") as f:
+        f.write("%d %d\n" % (len(mk_frames), len(pb_frames)))
 
 
 def main(outdir):
