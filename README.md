@@ -44,10 +44,35 @@ at the access address. All offsets in the dissectors are relative to it (adverti
 offset 12) and the length checks use the advertising data length from the PDU header instead of the
 frame length, so no capture-specific header size is hard coded any more.
 
+## Code structure
+
+Every dissector has the same layout: preamble (`package.path`) -> constants and tables -> helpers ->
+`dissector` function -> `register_postdissector`. Device specific knowledge is **data**, not code:
+
+| File | Content |
+|---|---|
+| `BLE_Tools.lua` | `getLinkLayer()` plus shared helpers: `matches` (identifier check from a `{offset, byte}` list), `hex`, `describe` (`Cmd[ad] ID[7b a7] ..` text), `addPayloadTrees` |
+| `Crypt_Tools.lua` | RF payload encryption / decryption (whitening, CRC) |
+| `CaDA_Tools.lua` | second encryption layer of the CaDA PC control block |
+| `MouldKing.lua` | `VARIANTS` table (Android / iOS / JieStar identifiers) and `COMMANDS` table (command byte -> name) |
+| `PowerBox.lua` | `VARIANTS` table (Android / Windows / iOS) |
+| `CaDA_RaceCar_PC.lua`, `CaDA_RaceCar_HS.lua` | device response plus `VARIANTS` table (Android / iOS) |
+
+Adding a device:
+
+* **new MouldKing command**: add one row to `COMMANDS` in `MouldKing.lua` (`length`, `manufacturer`,
+  `name`, `kind = "connect"` or `"command"`, a sample datagram as comment);
+* **new platform / app**: add one row to `VARIANTS` (`advLen`, identifying bytes in `pattern`,
+  where the payload starts, decryption parameters).
+
+The code style is described by `.editorconfig` (4 spaces, no tabs). Lua 5.3 or newer is required, the
+native bit operators are used (there is no dependency on the `bit` library).
+
 ## Tests
 
     lua5.4 tests/test_ble_tools.lua                       # pure Lua unit test of BLE_Tools.lua
     TSHARK=/path/to/tshark bash tests/run_tshark_tests.sh # runs the dissectors in tshark
+    COMPARE_MAIN=1 TSHARK=... bash tests/run_tshark_tests.sh # also compares Info and packet tree with branch main
 
 The tshark test generates identical packets as DLT 272, 256 and 251 captures (`tests/make_pcaps.py`)
 and checks that the Info column is the same for all of them. See `tests/README.md`.

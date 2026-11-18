@@ -13,10 +13,15 @@
 #   4. the repository cloned into a (fake) personal plugin folder, tests/ included, decodes the same
 #      (Wireshark loads *.lua files recursively), and the startup prints no Lua load errors,
 #   5. a real capture of the XN297L sniffer (tests/captures, DLT 256) is decoded in both modes,
-#   6. optional (COMPARE_MAIN=1): the ORIGINAL dissectors from git branch main
-#      produce the same Info as the new ones on DLT 272.
+#   6. no dissector assigns a global variable (luac5.4 -l shows no SETTABUP _ENV; skipped when
+#      luac5.4 is not installed),
+#   7. no tab characters in the source files (.editorconfig),
+#   8. optional (COMPARE_MAIN=1): the dissectors from git branch main produce the same Info
+#      column AND the same packet tree (tshark -V) as the current code, for every variant,
+#      the real capture and a generated command sweep (all commands / lengths / variants,
+#      see make_pcaps.py - generated on the fly, not committed as capture).
 #
-# Environment: TSHARK (default "tshark"), PYTHON (default "python3").
+# Environment: TSHARK (default "tshark"), PYTHON (default "python3"), LUAC (default "luac5.4").
 # Needs Wireshark with Lua support (Lua 5.3+ syntax is used by Crypt_Tools.lua).
 # Usage: bash tests/run_tshark_tests.sh        exit code 0 = all passed
 
@@ -25,6 +30,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(dirname "$HERE")"
 TSHARK="${TSHARK:-tshark}"
 PYTHON="${PYTHON:-python3}"
+LUAC="${LUAC:-luac5.4}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -56,6 +62,15 @@ info_of() {
     "$TSHARK" -r "$pcap" "${args[@]}" -o 'gui.column.format:"Info","%i"' 2>>"$WORK/err"
 }
 
+# tree_of <pcap> <dissector dir> : full packet tree (tshark -V) with the dissectors of <dir>
+tree_of() {
+    local pcap="$1" dir="$2" args=() f
+    for f in MouldKing PowerBox CaDA_RaceCar_PC CaDA_RaceCar_HS; do
+        args+=(-X "lua_script:$dir/$f.lua")
+    done
+    "$TSHARK" -r "$pcap" "${args[@]}" -V 2>>"$WORK/err"
+}
+
 "$PYTHON" -I "$HERE/make_pcaps.py" "$WORK/pcaps" || { echo "pcap generation failed"; exit 2; }
 : > "$WORK/err"
 
@@ -78,7 +93,13 @@ for info_file in "$WORK"/pcaps/*.info; do
     [ "$i272" == "$i251" ];         check "$name: DLT 272 == DLT 251" $?
     if [ -n "$OLD_DIR" ]; then
         old272="$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")"
-        [ "$i272" == "$old272" ];   check "$name: new == original (main) on DLT 272" $?
+        [ "$i272" == "$old272" ];   check "$name: Info new == original (main) on DLT 272" $?
+        # The MouldKing iOS frame raised a Lua error on main (see make_pcaps.py): its tree differs
+        # on purpose and is checked in the sweep section instead.
+        if [ "$name" != "mk_ios" ]; then
+            [ "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$REPO")" == "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")" ]
+            check "$name: packet tree (-V) new == original (main) on DLT 272" $?
+        fi
     fi
 done
 
@@ -118,23 +139,60 @@ echo "     frames with '$EXPECT': -X mode $n_x, installed folder $n_i, without p
 [ "$n_i" -eq 48 ];    check "real capture: 48 MouldKing frames decoded from installed plugin folder" $?
 [ "$n_base" -eq 0 ];  check "real capture: no MouldKing text without plugins" $?
 if [ -n "$OLD_DIR" ]; then
-    [ "$(info_of "$REAL" "$OLD_DIR" | grep -c "$EXPECT")" -eq 0 ]
-    check "real capture: original (main) dissectors do NOT decode it (DLT 256 bug)" $?
+    [ "$(info_of "$REAL" "$REPO")" == "$(info_of "$REAL" "$OLD_DIR")" ]
+    check "real capture: Info new == original (main)" $?
+    [ "$(tree_of "$REAL" "$REPO")" == "$(tree_of "$REAL" "$OLD_DIR")" ]
+    check "real capture: packet tree (-V) new == original (main)" $?
+fi
+
+if [ -n "$OLD_DIR" ]; then
+    echo "== command sweep (generated frames of all commands/lengths/variants) vs main"
+    SWEEP="$WORK/pcaps/sweep_dlt272.pcap"
+    decoded="$(info_of "$SWEEP" "$REPO" | grep -vc 'ADV_NONCONN_IND')"
+    total="$("$TSHARK" -r "$SWEEP" 2>/dev/null | wc -l)"
+    echo "     $decoded of $total sweep frames are decoded"
+    [ "$decoded" -ge 150 ];  check "sweep: at least 150 frames are decoded (the sweep is still meaningful)" $?
+    [ "$(info_of "$SWEEP" "$REPO")" == "$(info_of "$SWEEP" "$OLD_DIR")" ]
+    check "sweep: Info new == original (main)" $?
+    [ "$(tree_of "$SWEEP" "$REPO")" == "$(tree_of "$SWEEP" "$OLD_DIR")" ]
+    check "sweep: packet tree (-V) new == original (main)" $?
+    # MouldKing iOS: main raises a Lua error, the new code leaves the frames alone (bounds guard)
+    IOS="$WORK/pcaps/sweep_mk_ios_dlt272.pcap"
+    [ "$(info_of "$IOS" "$REPO")" == "$(info_of "$IOS" "$OLD_DIR")" ]
+    check "sweep MouldKing iOS: Info new == original (main)" $?
+    tree_of "$IOS" "$OLD_DIR" | grep -q "Lua Error"
+    check "sweep MouldKing iOS: original (main) raises a Lua error (known bug)" $?
 fi
 
 echo "== no Lua errors in the packet tree"
 # Lua errors in a post-dissector are NOT printed on stderr but added as "Lua Error" expert info
-# to the tree, so decode everything with -V. mk_ios is skipped (known pre-existing bug, see make_pcaps.py).
+# to the tree, so decode everything (all variants, the sweeps, the real capture) with -V.
 tree_errors=0
-for f in "$WORK"/pcaps/*.pcap; do
-    case "$f" in */mk_ios_*) continue ;; esac
-    args=()
-    for d in MouldKing PowerBox CaDA_RaceCar_PC CaDA_RaceCar_HS; do args+=(-X "lua_script:$REPO/$d.lua"); done
-    if "$TSHARK" -r "$f" "${args[@]}" -V 2>&1 | grep -q "Lua Error"; then
+for f in "$WORK"/pcaps/*.pcap "$REAL"; do
+    if tree_of "$f" "$REPO" 2>&1 | grep -q "Lua Error"; then
         echo "     Lua error in $(basename "$f")"; tree_errors=$((tree_errors + 1))
     fi
 done
 [ "$tree_errors" -eq 0 ]; check "no 'Lua Error' in any decoded packet" $?
+
+echo "== no global variables in the Lua files"
+# A global assignment compiles to SETTABUP on _ENV; tests/ is excluded (its stubs set globals on purpose).
+if command -v "$LUAC" >/dev/null 2>&1; then
+    leaks=0
+    for f in "$REPO"/*.lua; do
+        if "$LUAC" -l -p "$f" | grep -E 'SETTABUP.*_ENV' >"$WORK/leak"; then
+            echo "     global assignment in $(basename "$f"):"; sed 's/^/       /' "$WORK/leak"; leaks=$((leaks + 1))
+        fi
+    done
+    [ "$leaks" -eq 0 ]; check "no global variable assignments in the dissector/helper modules" $?
+else
+    echo "  skip luac5.4 not found (set LUAC=/path/to/luac5.4): global variable check not run"
+fi
+
+echo "== code style (.editorconfig)"
+# Only spaces for indentation: no tab characters in the Lua, Python and shell files.
+if grep -lP '\t' "$REPO"/*.lua "$REPO"/tests/*.lua "$REPO"/tests/*.py "$REPO"/tests/*.sh; then false; else true; fi
+check "no tab characters in .lua / .py / .sh files" $?
 
 echo "== no Lua errors on stderr"
 if grep -qiE 'lua|error|traceback|runtime' "$WORK/err"; then

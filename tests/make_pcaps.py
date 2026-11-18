@@ -23,6 +23,7 @@ Standard library only.
 """
 
 import os
+import random
 import struct
 import sys
 
@@ -177,10 +178,9 @@ def cada_hs_android():
 # name -> (builder, expected advertising data length, expected Info substring)
 VARIANTS = {
     "mk_android": (mk_android, 31, "Android - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Command - Cmd[66] ID[7b a7] 80 80 80 80"),
-    # KNOWN PRE-EXISTING BUG (not part of task 020): MouldKing.lua reads 26 bytes of iOS payload
-    # but only 18 exist, so the dissector raises "Range is out of bounds" for every iOS frame
-    # (identically on branch main) and the Info column keeps the btle text. The test therefore
-    # only checks that all link types and the original code behave identically.
+    # MouldKing iOS: the dissector reads 26 payload bytes but only 18 exist (payload length
+    # unverified, needs a real iOS capture). Branch main raised "Range is out of bounds" for every
+    # such frame; the current code skips the frame, so the Info column keeps the btle text.
     "mk_ios": (mk_ios, 23, "ADV_NONCONN_IND"),
     "powerbox_android": (powerbox_android, 25, "Android - PowerBox - Command Cmd[40] ID[7b a7] 01 02 03 04"),
     "powerbox_windows": (powerbox_windows, 30, "Windows - PowerBox - Command Cmd[40] ID[7b a7] 01 02 03 04"),
@@ -235,6 +235,112 @@ def write_all(outdir, name, ll):
     write_pcap(os.path.join(outdir, name + "_dlt251.pcap"), 251, [ll])
 
 
+# --------------------------------------------------------------------------
+# Command sweep (generated on the fly, never committed as a capture)
+#
+# The VARIANTS above contain ONE command per dissector. The refactored dissectors are
+# table driven, so a table row that is never hit could be wrong without any test noticing.
+# The sweep therefore generates frames for every command / length / variant combination
+# (plus unknown commands and wrong lengths). The shell test compares what the dissectors of
+# branch main and the current code make of them (Info column and complete packet tree).
+# --------------------------------------------------------------------------
+SEED_CADA = [0x43, 0x41, 0x52]
+
+# MouldKing family: name -> (identifier bytes, header offset, ctx2, adv data layout)
+MK_VARIANTS = {
+    "mk": ([0x6D, 0xB6, 0x43, 0xCF, 0x7E, 0x8F, 0x47, 0x11], 0x25),
+    "js_ee": ([0xEE, 0x1B, 0xC8, 0x46, 0x3E, 0x3D, 0xFB, 0xD2], 0x26),
+    "js_6f": ([0x6F, 0x7F, 0xB1, 0xC1, 0x01, 0x53, 0x6F, 0x6C], 0x27),
+}
+# commands of 8 byte datagrams and of 10 byte datagrams (see MouldKing.lua), plus unknown ones
+MK_CMDS_8 = [0xAA, 0x66, 0x77, 0xB1, 0xAD, 0x6D, 0xA4, 0x40, 0x41, 0x42, 0x43, 0x99, 0x81, 0x7D]
+MK_CMDS_10 = [0x81, 0x7D, 0x61, 0x62, 0x63, 0xAA, 0x66, 0xA4, 0x40, 0x99]
+
+
+def mk_android_family(ident, ctx2, command, third, length, device_id):
+    """MouldKing / JieStar Android frame (advLen 31) with a datagram of 8 or 10 bytes."""
+    data = [command] + device_id + [third] + [0x80, 0x80, 0x4F, 0x11, 0x22, 0x33][: length - 4]
+    data = data[:length]
+    payload = make_payload(SEED_MK, ident, data, 15, 0x3F, ctx2)
+    fill = bytes(range(0x13, 0x13 + 31 - 7 - len(payload)))       # 0x13 0x14 .. = 8 byte marker
+    return FLAGS + ad(0xFF, bytes([0xF0, 0xFF]) + payload + fill)
+
+
+def sweep_mouldking():
+    """All MouldKing / JieStar commands, device ids and third bytes (Android layouts)."""
+    frames = []
+    for ident, ctx2 in MK_VARIANTS.values():
+        for length, cmds in ((8, MK_CMDS_8), (10, MK_CMDS_10)):
+            for command in cmds:
+                for device_id in ([0x7B, 0xA7], [0x1D, 0x74]):
+                    # third byte matters for 0xa4 (JIE-STAR 8CH / 4CH / unknown)
+                    for third in ((0x00, 0x80, 0x55) if command == 0xA4 else (0x80,)):
+                        frames.append(mk_android_family(ident, ctx2, command, third, length, device_id))
+    return frames
+
+
+def sweep_powerbox():
+    """PowerBox: connect, command and unknown commands on all three platforms."""
+    frames = []
+    for command in (0xA4, 0x40, 0x99, 0x00):
+        data = [command, 0x78, 0x5F, 0x01, 0x02, 0x03, 0x04, 0x05]
+        mk = [0x6D, 0xB6, 0x43, 0xCF, 0x7E, 0x8F, 0x47]
+        p = make_payload(SEED_MK, mk, data, 15, 0x3F, 0x25)
+        frames.append(FLAGS + ad(0xFF, bytes([0x00, 0xFF]) + p))                       # Android
+        p = make_payload(SEED_MK, mk[:4], data, 15, 0x3F, 0x25)
+        frames.append(bytes([0x1D, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00]) + p + bytes(range(1, 6)))   # Windows
+        p = make_payload(SEED_MK, [0xC8], data, 16, 0x3F, 0x25)
+        frames.append(FLAGS + bytes([0x02, 0x0A, 0x00]) + ad(0x03, p))                 # iOS
+    return frames
+
+
+def sweep_cada_pc(rng):
+    """CaDA PC: connect, control with random shuffle flags, unknown command, wrong first byte."""
+    frames = []
+    cases = [(0x75, 0x10), (0x75, 0x13), (0x75, 0x77), (0x74, 0x13)]
+    for first, cmd in cases:
+        for _ in range(12 if cmd == 0x13 and first == 0x75 else 1):
+            data = [first, cmd] + [rng.randrange(256) for _ in range(14)]
+            p = make_payload(SEED_CADA, [0xEE, 0x1B, 0xC8, 0xAF, 0x9F, 0x3C], data, 15, 0x3F, 0x26)
+            frames.append(FLAGS + ad(0xFF, bytes([0x00, 0xC2]) + p))                   # Android, advLen 31
+            p = make_payload(SEED_CADA, [0xC0, 0x3D, 0xCA, 0x66, 0x6D, 0x32], data, 13, 0x3F, 0x26)
+            frames.append(FLAGS + ad(0x03, p + bytes(2)))                         # iOS, advLen 31
+    # device response (advLen 23, byte +8 has bit 0x40 set)
+    body = bytes([0xF0, 0xFF, 0x75, 0x41, 0x31, 0xF5, 0xE5, 0x79, 0x29, 0xCB] + [0] * 8)
+    frames.append(FLAGS + ad(0xFF, body))
+    return frames
+
+
+def sweep_cada_hs(rng):
+    """CaDA HS: connect (0xaa), control (0xbb) with many throttle / steering / offsets, other, response."""
+    frames = []
+    footer = bytes([0xCC, 0xB8, 0x92, 0xB0])
+    for command in (0xAA, 0xBB, 0xCC):
+        for _ in range(10 if command == 0xBB else 1):
+            ctl = bytes(rng.randrange(256) for _ in range(5))      # throttle steering lights offset seq
+            head = bytes([command, 0x11, 0x11, 0xC9, 0xC1, 0x79, 0x29])
+            frames.append(FLAGS + ad(0xFF, bytes([0x00, 0xC2]) + head + ctl + footer))             # Android 23
+            frames.append(FLAGS + ad(0x03, bytes([0xC0, 0x00]) + head + ctl + footer + bytes(8)))   # iOS 31
+    # device response (advLen 31): 0x11 0xff 0xaa 0x11 0x11 + 26 bytes
+    frames.append(bytes([0x11, 0xFF, 0xAA, 0x11, 0x11]) + bytes(rng.randrange(256) for _ in range(26)))
+    return frames
+
+
+def write_sweep(outdir):
+    """Write sweep_dlt272.pcap (everything that can be decoded) and sweep_mk_ios_dlt272.pcap."""
+    rng = random.Random(2021)                                 # fixed seed: reproducible frames
+    frames = sweep_mouldking() + sweep_powerbox() + sweep_cada_pc(rng) + sweep_cada_hs(rng)
+    write_pcap(os.path.join(outdir, "sweep_dlt272.pcap"), 272, [nordic_272(ll_packet(a)) for a in frames])
+    # MouldKing iOS frames (see mk_ios) are kept apart: the old dissector raised a Lua error there.
+    ios = []
+    ios_ident = [0xF9, 0x08, 0x49, 0x22, 0x47, 0xBA, 0xC4, 0xBC]
+    for command in (0xAA, 0x66, 0x40, 0xA4):
+        data = [command, 0x7B, 0xA7, 0x80, 0x80, 0x80, 0x80, 0x55]
+        p = make_payload(SEED_MK, ios_ident, data, 13, 0x3F, 0x25)
+        ios.append(FLAGS + ad(0x03, p))
+    write_pcap(os.path.join(outdir, "sweep_mk_ios_dlt272.pcap"), 272, [nordic_272(ll_packet(a)) for a in ios])
+
+
 def main(outdir):
     os.makedirs(outdir, exist_ok=True)
     for name, (build, adv_len, expected) in VARIANTS.items():
@@ -251,6 +357,7 @@ def main(outdir):
     write_all(outdir, "neg_data_pdu", ll_packet(mk, access_address=0x12345678))
     write_all(outdir, "neg_truncated", ll_packet(mk, cut=20))
     write_all(outdir, "neg_other_length", ll_packet(mk + b"\x00"))
+    write_sweep(outdir)
     # A capture without any btle layer: Ethernet link type with junk.
     write_pcap(os.path.join(outdir, "neg_no_btle.pcap"), 1, [bytes(range(60))])
 
