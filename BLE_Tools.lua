@@ -25,6 +25,7 @@
 --   hex()              format bytes as " 7b a7 80"
 --   describe()         build the "Cmd[ad] ID[7b a7] 80 80" text of a decrypted datagram
 --   addPayloadTrees()  add the "Payload" and "decrypted" subtrees to the packet tree
+--   newDatagramFields() / addHidden()  ProtoFields that make the decoded values filterable
 --
 -- Needs Lua 5.3 or newer (Wireshark 4.4 or newer), like the other modules of this repository.
 
@@ -133,6 +134,43 @@ function BleTools.describe(bytes, dataLength)
     return text
 end
 
+--- Create the ProtoFields shared by the decrypting dissectors (MouldKing, PowerBox).
+-- The fields make the decoded values filterable (e.g. `mouldking.cmd == 0x66`) and available to
+-- `tshark -T fields -e`. They are added to the tree as hidden items (or with the unchanged
+-- label text) so the visible packet tree does not change.
+-- @param abbrev abbreviation prefix of the dissector's Proto, e.g. "mouldking"
+-- @return fields table (platform, manufacturer, payload, datagram, cmd, id, data) and
+--         the same fields as a list for `Proto.fields = list`
+function BleTools.newDatagramFields(abbrev)
+    local fields = {
+        platform = ProtoField.string(abbrev .. ".platform", "Platform"),
+        manufacturer = ProtoField.string(abbrev .. ".manufacturer", "Manufacturer"),
+        payload = ProtoField.bytes(abbrev .. ".payload", "Encrypted payload"),
+        datagram = ProtoField.string(abbrev .. ".datagram", "Datagram"),
+        cmd = ProtoField.uint8(abbrev .. ".cmd", "Command", base.HEX),
+        id = ProtoField.uint16(abbrev .. ".id", "Device id", base.HEX),
+        data = ProtoField.bytes(abbrev .. ".data", "Data"),
+    }
+    local list = { fields.platform, fields.manufacturer, fields.payload, fields.datagram,
+                   fields.cmd, fields.id, fields.data }
+    return fields, list
+end
+
+--- Add a ProtoField item that is filterable but not visible in the packet details.
+-- @param subtree tree item to add to
+-- @param field   ProtoField
+-- @param range   TvbRange the item covers
+-- @param value   optional value (required for string fields)
+function BleTools.addHidden(subtree, field, range, value)
+    local item
+    if value ~= nil then
+        item = subtree:add(field, range, value)
+    else
+        item = subtree:add(field, range)
+    end
+    item:set_hidden()
+end
+
 --- Add the two subtrees every decrypting dissector shows for a frame.
 --   "<platform> - <manufacturer> - Payload"    : the raw (encrypted) payload and its length
 --   "<platform> - <manufacturer> - decrypted"  : the decrypted datagram, its name and length
@@ -146,7 +184,9 @@ end
 -- @param encrypted    raw payload as ByteArray
 -- @param decrypted    decrypted datagram as ByteArray (nil when decryption failed)
 -- @param datagramname name of the datagram, e.g. "MK4.0/MK5.0 Connect - Cmd[ad] ID[7b a7]"
-function BleTools.addPayloadTrees(tree, proto, frameinfo, platform, manufacturer, encrypted, decrypted, datagramname)
+-- @param fields       optional table from newDatagramFields(): the values are then also added as
+--                     filterable fields (hidden, except the datagram line which keeps its text)
+function BleTools.addPayloadTrees(tree, proto, frameinfo, platform, manufacturer, encrypted, decrypted, datagramname, fields)
     if not (tree and decrypted) then
         return
     end
@@ -159,7 +199,22 @@ function BleTools.addPayloadTrees(tree, proto, frameinfo, platform, manufacturer
 
     local tvb2 = ByteArray.tvb(decrypted, frameinfo)
     local subtree2 = tree:add(proto, tvb2(), prefix .. "decrypted")
-    subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
+    local line = datagramname .. "-Datagram - Len: " .. tvb2():len()
+    if not fields then
+        subtree2:add(tvb2(), line)
+        return
+    end
+
+    -- Same visible text as without fields, but the line carries the datagram name as field.
+    subtree2:add(fields.datagram, tvb2(), datagramname, line)
+    BleTools.addHidden(subtree1, fields.payload, tvb1())
+    BleTools.addHidden(subtree2, fields.platform, tvb2(), platform)
+    BleTools.addHidden(subtree2, fields.manufacturer, tvb2(), manufacturer)
+    BleTools.addHidden(subtree2, fields.cmd, tvb2(0, 1))
+    BleTools.addHidden(subtree2, fields.id, tvb2(1, 2))
+    if tvb2():len() > 4 then
+        BleTools.addHidden(subtree2, fields.data, tvb2(3, tvb2():len() - 4))
+    end
 end
 
 return BleTools

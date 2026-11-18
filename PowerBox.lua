@@ -22,6 +22,11 @@ local CryptTools = require("Crypt_Tools")
 -- Protocol object of this post-dissector (used as the owner of the tree items).
 local PowerBoxDissector = Proto("PowerBox", "Global Frame Analyzer for Bluetooth LE from PowerBox")
 
+-- Filterable fields (powerbox.cmd, powerbox.id, ...). They are added to the packet tree as hidden items,
+-- the visible tree text is the same as without them.
+local fields, fieldList = BleTools.newDatagramFields("powerbox")
+PowerBoxDissector.fields = fieldList
+
 -- Decryption parameters (identical for all platforms).
 local SEED = { 0xC1, 0xC2, 0xC3, 0xC4, 0xC5 }
 local CTX_VALUE_1 = 0x3f
@@ -161,7 +166,7 @@ function PowerBoxDissector.dissector(buffer, pinfo, tree)
 
     local frameinfo = variant.platform .. " - " .. manufacturer .. " - " .. datagramname
     BleTools.addPayloadTrees(tree, PowerBoxDissector, frameinfo, variant.platform, manufacturer,
-        encrypted, decrypted, datagramname)
+        encrypted, decrypted, datagramname, fields)
     pinfo.cols.info = frameinfo
 end
 

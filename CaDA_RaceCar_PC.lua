@@ -23,6 +23,24 @@ local CaDATools = require("CaDA_Tools")
 -- Protocol object of this post-dissector (used as the owner of the tree items).
 local CaDADissector = Proto("CaDA", "Global Frame Analyzer for Bluetooth LE from CaDA")
 
+-- Filterable fields (cada.cmd, cada.device_addr, ...). The tree items that show them keep their
+-- text; platform and payload are added as hidden items.
+local pf = {
+    platform = ProtoField.string("cada.platform", "Platform"),
+    payload = ProtoField.bytes("cada.payload", "Encrypted payload"),
+    datagram = ProtoField.string("cada.datagram", "Datagram"),
+    id = ProtoField.uint8("cada.id", "Id", base.HEX),
+    cmd = ProtoField.uint8("cada.cmd", "Command", base.HEX),
+    device_addr = ProtoField.uint24("cada.device_addr", "Device address", base.HEX),
+    app_addr = ProtoField.uint24("cada.app_addr", "App address", base.HEX),
+    random = ProtoField.uint16("cada.random", "Random", base.HEX),
+    channel1 = ProtoField.uint8("cada.channel1", "Channel 1", base.HEX),
+    channel2 = ProtoField.uint8("cada.channel2", "Channel 2", base.HEX),
+    channel3 = ProtoField.uint8("cada.channel3", "Channel 3", base.HEX),
+}
+CaDADissector.fields = { pf.platform, pf.payload, pf.datagram, pf.id, pf.cmd, pf.device_addr,
+                         pf.app_addr, pf.random, pf.channel1, pf.channel2, pf.channel3 }
+
 -- Decryption parameters of the CaDA datagrams.
 local SEED = { 0x43, 0x41, 0x52 }
 local CTX_VALUE_1 = 0x3f
@@ -116,15 +134,27 @@ local function findVariant(ll, advLen)
     return nil
 end
 
+--- Add a numeric field to a subtree, showing `label` plus the bytes as hex.
+-- @param subtree tree item to add to
+-- @param field   ProtoField (unsigned integer)
+-- @param tvb     Tvb of the decrypted datagram
+-- @param offset  first byte of the field
+-- @param length  number of bytes
+-- @param label   text shown in the packet tree, e.g. "Id: 0x"; the bytes are appended
+local function addUint(subtree, field, tvb, offset, length, label)
+    local range = tvb(offset, length)
+    subtree:add(field, range, range:uint(), label .. range)
+end
+
 --- Add the fields every CaDA datagram starts with to a subtree.
 -- Layout: byte 0 id, byte 1 command, bytes 2..4 device address, bytes 5..7 app address.
 -- @param subtree tree item to add the lines to
 -- @param tvb     Tvb of the decrypted datagram
 local function addCommonFields(subtree, tvb)
-    subtree:add(tvb(0, 1), "Id: 0x" .. tvb(0, 1))
-    subtree:add(tvb(1, 1), "Cmd: 0x" .. tvb(1, 1))
-    subtree:add(tvb(2, 3), "DeviceAddr: 0x" .. tvb(2, 3))
-    subtree:add(tvb(5, 3), "AppAddr: 0x" .. tvb(5, 3))
+    addUint(subtree, pf.id, tvb, 0, 1, "Id: 0x")
+    addUint(subtree, pf.cmd, tvb, 1, 1, "Cmd: 0x")
+    addUint(subtree, pf.device_addr, tvb, 2, 3, "DeviceAddr: 0x")
+    addUint(subtree, pf.app_addr, tvb, 5, 3, "AppAddr: 0x")
 end
 
 --- Show a device response frame (Info column and packet tree).
@@ -136,7 +166,8 @@ local function dissectResponse(ll, pinfo, tree)
     if tree then
         local tvb = ByteArray.tvb(ll(RESPONSE_RAW_OFFSET, RESPONSE_RAW_LENGTH):bytes(), frameinfo)
         local subtree = tree:add(CaDADissector, tvb(), frameinfo)
-        subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+        subtree:add(pf.datagram, tvb(), datagramname, datagramname .. " - Len: " .. tvb():len())
+        BleTools.addHidden(subtree, pf.platform, tvb(), "Device")
         addCommonFields(subtree, tvb)
     end
 end
@@ -170,16 +201,18 @@ local function dissectDatagram(ll, variant, pinfo, tree)
         local tvb1 = ByteArray.tvb(encrypted, frameinfo)
         local subtree1 = tree:add(CaDADissector, tvb1(), variant.platform .. " - " .. MANUFACTURER .. " - Payload")
         subtree1:add(tvb1(), "Len: " .. tvb1():len())
+        BleTools.addHidden(subtree1, pf.payload, tvb1())
 
         local tvb2 = ByteArray.tvb(decrypted, frameinfo)
         local subtree2 = tree:add(CaDADissector, tvb2(), frameinfo)
-        subtree2:add(tvb2(), datagramname .. " - Len: " .. tvb2():len())
+        subtree2:add(pf.datagram, tvb2(), datagramname, datagramname .. " - Len: " .. tvb2():len())
+        BleTools.addHidden(subtree2, pf.platform, tvb2(), variant.platform)
         addCommonFields(subtree2, tvb2)
         -- Random value and channel bytes are shown for every app datagram (not only for Control).
-        subtree2:add(tvb2(8, 2), "Random: 0x" .. tvb2(8, 2))
-        subtree2:add(tvb2(10, 1), "Channel 1: 0x" .. tvb2(10, 1))
-        subtree2:add(tvb2(11, 1), "Channel 2: 0x" .. tvb2(11, 1))
-        subtree2:add(tvb2(12, 1), "Channel 3: 0x" .. tvb2(12, 1))
+        addUint(subtree2, pf.random, tvb2, 8, 2, "Random: 0x")
+        addUint(subtree2, pf.channel1, tvb2, 10, 1, "Channel 1: 0x")
+        addUint(subtree2, pf.channel2, tvb2, 11, 1, "Channel 2: 0x")
+        addUint(subtree2, pf.channel3, tvb2, 12, 1, "Channel 3: 0x")
     end
 end
 

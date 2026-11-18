@@ -32,6 +32,27 @@ local BleTools = require("BLE_Tools")
 -- Protocol object of this post-dissector (used as the owner of the tree items).
 local CaDADissector = Proto("CaDA_HS", "Global Frame Analyzer for Bluetooth LE from CaDA - Type HS")
 
+-- Filterable fields (cada_hs.cmd, cada_hs.throttle, ...). The tree items that show them keep
+-- their text; platform and payload are added as hidden items. throttle and steering are the
+-- decoded values (see decodeControl), the others are the raw bytes.
+local pf = {
+    platform = ProtoField.string("cada_hs.platform", "Platform"),
+    payload = ProtoField.bytes("cada_hs.payload", "Raw datagram"),
+    datagram = ProtoField.string("cada_hs.datagram", "Datagram"),
+    cmd = ProtoField.uint8("cada_hs.cmd", "Command", base.HEX),
+    id1 = ProtoField.uint8("cada_hs.id1", "Id (1st header byte)", base.HEX),
+    id2 = ProtoField.uint8("cada_hs.id2", "Id (2nd header byte)", base.HEX),
+    device_id = ProtoField.uint16("cada_hs.device_id", "Device id", base.HEX),
+    app_id = ProtoField.uint16("cada_hs.app_id", "App id", base.HEX),
+    throttle = ProtoField.int32("cada_hs.throttle", "Throttle"),
+    steering = ProtoField.int32("cada_hs.steering", "Steering"),
+    lights = ProtoField.int8("cada_hs.lights", "Lights"),
+    offset = ProtoField.uint8("cada_hs.offset", "Offset", base.HEX),
+    seq = ProtoField.uint8("cada_hs.seq", "Sequence id", base.HEX),
+}
+CaDADissector.fields = { pf.platform, pf.payload, pf.datagram, pf.cmd, pf.id1, pf.id2, pf.device_id,
+                         pf.app_id, pf.throttle, pf.steering, pf.lights, pf.offset, pf.seq }
+
 local MANUFACTURER = "CaDA HS"
 local COMMAND_CONNECT = 0xaa
 local COMMAND_CONTROL = 0xbb
@@ -121,8 +142,8 @@ end
 -- The throttle and steering bytes are XORed with the offset byte; the real value is the
 -- result minus 0x80 (throttle: negated, so that "forward" is positive).
 -- @param rawdata TvbRange of the 16 byte datagram
--- @return seqIdName, offsetString, throttleString, steeringString, lightsString (display texts like
---         "005[0x05]"; the numeric part is padded to a fixed width)
+-- @return table with the numbers (throttle, steering, lights) and the display texts
+--         (seq, offset, throttle, steering, lights; like "005[0x05]", the numeric part padded)
 local function decodeControl(rawdata)
     local seqId = rawdata(11, 1):uint() & 0xff
     local seqIdName = string.format("%03d", seqId) .. "[0x" .. string.format("%02x", seqId) .. "]"
@@ -141,7 +162,11 @@ local function decodeControl(rawdata)
     local lights = rawdata(9, 1):int()
     local lightsString = lights .. "[0x" .. string.format("%x", lights) .. "]"
 
-    return seqIdName, offsetString, throttleString, steeringString, lightsString
+    return {
+        throttle = throttle, steering = steering, lights = lights,
+        seqText = seqIdName, offsetText = offsetString,
+        throttleText = throttleString, steeringText = steeringString, lightsText = lightsString,
+    }
 end
 
 --- Add the packet tree of an app datagram (Connect and Control share it).
@@ -150,31 +175,33 @@ end
 -- @param frameinfo    Info text (also the name of the synthetic data sources)
 -- @param datagramname name of the datagram, e.g. "Connect"
 -- @param rawdata      TvbRange of the 16 byte datagram
--- @param control      nil for Connect; for Control a table {throttle=, steering=, lights=} with the
---                     display texts of decodeControl(); adds the Throttle/Steering/Lights/Offset lines
+-- @param control      nil for Connect; for Control the table of decodeControl(); adds the
+--                     Throttle/Steering/Lights/Offset lines
 local function addTree(tree, variant, frameinfo, datagramname, rawdata, control)
     -- "Payload" subtree with the raw datagram.
     local tvb1 = ByteArray.tvb(rawdata:bytes(), frameinfo)
     local subtree1 = tree:add(CaDADissector, tvb1(), variant.platform .. " - " .. MANUFACTURER .. " - Payload")
     subtree1:add(tvb1(), "Len: " .. tvb1():len())
+    BleTools.addHidden(subtree1, pf.payload, tvb1())
 
     -- Second subtree with the decoded fields (the same bytes in a data source of its own).
     local tvb2 = ByteArray.tvb(rawdata:bytes(), frameinfo)
     local subtree2 = tree:add(CaDADissector, tvb2(), frameinfo)
-    subtree2:add(tvb2(), datagramname .. " - Len: " .. tvb2():len())
-    subtree2:add(tvb2(0, 1), "Cmd: 0x" .. tvb2(0, 1))
-    subtree2:add(tvb2(1, 1), "Id: 0x" .. tvb2(1, 1))
-    subtree2:add(tvb2(2, 1), "Id: 0x" .. tvb2(2, 1))
+    subtree2:add(pf.datagram, tvb2(), datagramname, datagramname .. " - Len: " .. tvb2():len())
+    BleTools.addHidden(subtree2, pf.platform, tvb2(), variant.platform)
+    subtree2:add(pf.cmd, tvb2(0, 1), tvb2(0, 1):uint(), "Cmd: 0x" .. tvb2(0, 1))
+    subtree2:add(pf.id1, tvb2(1, 1), tvb2(1, 1):uint(), "Id: 0x" .. tvb2(1, 1))
+    subtree2:add(pf.id2, tvb2(2, 1), tvb2(2, 1):uint(), "Id: 0x" .. tvb2(2, 1))
     -- Ids are little endian: the bytes are shown swapped.
-    subtree2:add(tvb2(3, 2), "Device Id: 0x" .. tvb2(4, 1) .. tvb2(3, 1))
-    subtree2:add(tvb2(5, 2), "App Id: 0x" .. tvb2(6, 1) .. tvb2(5, 1))
+    subtree2:add_le(pf.device_id, tvb2(3, 2), tvb2(3, 2):le_uint(), "Device Id: 0x" .. tvb2(4, 1) .. tvb2(3, 1))
+    subtree2:add_le(pf.app_id, tvb2(5, 2), tvb2(5, 2):le_uint(), "App Id: 0x" .. tvb2(6, 1) .. tvb2(5, 1))
     if control then
-        subtree2:add(tvb2(7, 1), "Throttle: " .. control.throttle)
-        subtree2:add(tvb2(8, 1), "Steering: " .. control.steering)
-        subtree2:add(tvb2(9, 1), "Lights: " .. control.lights)
-        subtree2:add(tvb2(10, 1), "Offset: 0x" .. tvb2(10, 1))
+        subtree2:add(pf.throttle, tvb2(7, 1), control.throttle, "Throttle: " .. control.throttleText)
+        subtree2:add(pf.steering, tvb2(8, 1), control.steering, "Steering: " .. control.steeringText)
+        subtree2:add(pf.lights, tvb2(9, 1), control.lights, "Lights: " .. control.lightsText)
+        subtree2:add(pf.offset, tvb2(10, 1), tvb2(10, 1):uint(), "Offset: 0x" .. tvb2(10, 1))
     end
-    subtree2:add(tvb2(11, 1), "Sequence Id: 0x" .. tvb2(11, 1))
+    subtree2:add(pf.seq, tvb2(11, 1), tvb2(11, 1):uint(), "Sequence Id: 0x" .. tvb2(11, 1))
 end
 
 --- Show a device response frame (Info column and packet tree).
@@ -186,10 +213,11 @@ local function dissectResponse(ll, pinfo, tree)
     if tree then
         local tvb = ByteArray.tvb(ll(RESPONSE_RAW_OFFSET, RESPONSE_RAW_LENGTH):bytes(), frameinfo)
         local subtree = tree:add(CaDADissector, tvb(), frameinfo)
-        subtree:add(tvb(), datagramname .. " - Len: " .. tvb():len())
+        subtree:add(pf.datagram, tvb(), datagramname, datagramname .. " - Len: " .. tvb():len())
+        BleTools.addHidden(subtree, pf.platform, tvb(), "Device")
         -- Ids are little endian: the bytes are shown swapped.
-        subtree:add(tvb(1, 2), "App Id: 0x" .. tvb(2, 1) .. tvb(1, 1))
-        subtree:add(tvb(3, 2), "Device ID: 0x" .. tvb(4, 1) .. tvb(3, 1))
+        subtree:add_le(pf.app_id, tvb(1, 2), tvb(1, 2):le_uint(), "App Id: 0x" .. tvb(2, 1) .. tvb(1, 1))
+        subtree:add_le(pf.device_id, tvb(3, 2), tvb(3, 2):le_uint(), "Device ID: 0x" .. tvb(4, 1) .. tvb(3, 1))
     end
 end
 
@@ -202,10 +230,9 @@ local function dissectDatagram(ll, variant, pinfo, tree)
     if command == COMMAND_CONNECT then
         datagramname = "Connect"
     elseif command == COMMAND_CONTROL then
-        local seqIdName, offsetString, throttle, steering, lights = decodeControl(rawdata)
-        datagramname = "Control Seq=" .. seqIdName .. " O=" .. offsetString ..
-            " T=" .. throttle .. " S=" .. steering .. " L=" .. lights
-        control = { throttle = throttle, steering = steering, lights = lights }
+        control = decodeControl(rawdata)
+        datagramname = "Control Seq=" .. control.seqText .. " O=" .. control.offsetText ..
+            " T=" .. control.throttleText .. " S=" .. control.steeringText .. " L=" .. control.lightsText
     else
         return  -- any other command: leave the frame alone (no Info change, no tree)
     end

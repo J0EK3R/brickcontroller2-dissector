@@ -172,6 +172,41 @@ check("addPayloadTrees: builds both subtrees",
       "Android - MouldKing - Payload|Len: 3|Android - MouldKing - decrypted|X Connect-Datagram - Len: 8")
 check("addPayloadTrees: no tree -> nothing", treeLines(nil, datagram) == "")
 check("addPayloadTrees: no decrypted data -> nothing", treeLines(fakeTree, nil) == "")
+
+-- With ProtoFields: the datagram line keeps its text, everything else is hidden.
+local items = {}
+local function recordingSubtree()
+    return { add = function(self, field, _, value, label)
+        local item = { field = type(field) == "table" and field.name or nil, value = value, label = label,
+                       set_hidden = function(this) this.hidden = true end }
+        items[#items + 1] = item
+        return item.field and item or recordingSubtree()
+    end }
+end
+local fieldTree = { add = function(_, _, _, label) items[#items + 1] = { label = label }; return recordingSubtree() end }
+-- ProtoField stub: a table with a name; base.HEX only has to exist
+local originalProtoField, originalBase = ProtoField, base
+base = { HEX = 1 }
+local function stubField(abbrev) return { name = abbrev } end
+ProtoField = { string = stubField, bytes = stubField, uint8 = stubField, uint16 = stubField }
+local fields, fieldList = BleTools.newDatagramFields("mk")
+check("newDatagramFields: abbreviations carry the prefix", fields.cmd.name == "mk.cmd" and fields.id.name == "mk.id")
+check("newDatagramFields: list holds all 7 fields", #fieldList == 7)
+items = {}
+BleTools.addPayloadTrees(fieldTree, {}, "info", "Android", "MouldKing", makeBytes(1, 2, 3), datagram, "X Connect", fields)
+local seen = {}
+for _, item in ipairs(items) do
+    if item.field then seen[item.field] = item end
+end
+check("addPayloadTrees+fields: datagram line keeps its text",
+      seen["mk.datagram"] and seen["mk.datagram"].label == "X Connect-Datagram - Len: 8"
+      and seen["mk.datagram"].value == "X Connect" and not seen["mk.datagram"].hidden)
+check("addPayloadTrees+fields: cmd/id/data/platform/manufacturer/payload are hidden",
+      seen["mk.cmd"] and seen["mk.cmd"].hidden and seen["mk.id"].hidden and seen["mk.data"].hidden
+      and seen["mk.platform"].hidden and seen["mk.manufacturer"].hidden and seen["mk.payload"].hidden)
+check("addPayloadTrees+fields: string fields carry their value",
+      seen["mk.platform"].value == "Android" and seen["mk.manufacturer"].value == "MouldKing")
+ProtoField, base = originalProtoField, originalBase
 ByteArray = originalByteArray
 
 check("ADV_DATA_OFFSET is 12", BleTools.ADV_DATA_OFFSET == 12)

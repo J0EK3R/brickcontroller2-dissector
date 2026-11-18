@@ -68,6 +68,21 @@ Adding a device:
 The code style is described by `.editorconfig` (4 spaces, no tabs). Lua 5.3 or newer is required, the
 native bit operators are used (there is no dependency on the `bit` library).
 
+## Filterable fields
+
+Besides the text in the packet tree every dissector declares `ProtoField`s, so the decoded values can be used
+in display filters and exported with `tshark -T fields -e <field>` (or `-T json`):
+
+| Dissector | Fields |
+|---|---|
+| `MouldKing.lua` | `mouldking.platform`, `.manufacturer`, `.cmd`, `.id`, `.data`, `.datagram`, `.payload` |
+| `PowerBox.lua` | `powerbox.platform`, `.manufacturer`, `.cmd`, `.id`, `.data`, `.datagram`, `.payload` |
+| `CaDA_RaceCar_PC.lua` | `cada.platform`, `.id`, `.cmd`, `.device_addr`, `.app_addr`, `.random`, `.channel1` .. `.channel3`, `.datagram`, `.payload` |
+| `CaDA_RaceCar_HS.lua` | `cada_hs.platform`, `.cmd`, `.id1`, `.id2`, `.device_id`, `.app_id`, `.throttle`, `.steering`, `.lights`, `.offset`, `.seq`, `.datagram`, `.payload` |
+
+Example: `tshark -r capture.pcap -Y "cada_hs.throttle < -50" -T fields -e cada_hs.throttle -e cada_hs.seq`.
+The visible packet tree is unchanged: fields without a line of their own are hidden items.
+
 ## Tests
 
     lua5.4 tests/test_ble_tools.lua                       # pure Lua unit test of BLE_Tools.lua

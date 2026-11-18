@@ -26,6 +26,11 @@ local CryptTools = require("Crypt_Tools")
 -- Protocol object of this post-dissector (used as the owner of the tree items).
 local MouldKingDissector = Proto("MouldKing", "Global Frame Analyzer for Bluetooth LE from MouldKing")
 
+-- Filterable fields (mouldking.cmd, mouldking.id, ...). They are added to the packet tree as hidden items,
+-- the visible tree text is the same as without them.
+local fields, fieldList = BleTools.newDatagramFields("mouldking")
+MouldKingDissector.fields = fieldList
+
 -- Decryption parameters. MouldKing and JieStar share seed and first whitening value, only the
 -- second whitening value differs (CTX_VALUE_2_*).
 local SEED = { 0xC1, 0xC2, 0xC3, 0xC4, 0xC5 }
@@ -340,7 +345,7 @@ function MouldKingDissector.dissector(buffer, pinfo, tree)
 
     local frameinfo = variant.platform .. " - " .. manufacturer .. " - " .. datagramname
     BleTools.addPayloadTrees(tree, MouldKingDissector, frameinfo, variant.platform, manufacturer,
-        encrypted, decrypted, datagramname)
+        encrypted, decrypted, datagramname, fields)
     pinfo.cols.info = frameinfo
 end
 

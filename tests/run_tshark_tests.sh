@@ -15,8 +15,9 @@
 #   5. a real capture of the XN297L sniffer (tests/captures, DLT 256) is decoded in both modes,
 #   6. no dissector assigns a global variable (luac5.4 -l shows no SETTABUP _ENV; skipped when
 #      luac5.4 is not installed),
-#   7. no tab characters in the source files (.editorconfig),
-#   8. optional (COMPARE_MAIN=1): the dissectors from git branch main produce the same Info
+#   7. the ProtoFields (mouldking.cmd, cada_hs.seq, ...) carry the decoded values and work in filters,
+#   8. no tab characters in the source files (.editorconfig),
+#   9. optional (COMPARE_MAIN=1): the dissectors from git branch main produce the same Info
 #      column AND the same packet tree (tshark -V) as the current code, for every variant,
 #      the real capture and a generated command sweep (all commands / lengths / variants,
 #      see make_pcaps.py - generated on the fly, not committed as capture).
@@ -163,6 +164,29 @@ if [ -n "$OLD_DIR" ]; then
     tree_of "$IOS" "$OLD_DIR" | grep -q "Lua Error"
     check "sweep MouldKing iOS: original (main) raises a Lua error (known bug)" $?
 fi
+
+echo "== filterable ProtoFields (values of the variants, see make_pcaps.py)"
+# field_of <pcap> <field> : value of a field with the dissectors of the repository loaded
+field_of() {
+    local args=() f
+    for f in MouldKing PowerBox CaDA_RaceCar_PC CaDA_RaceCar_HS; do args+=(-X "lua_script:$REPO/$f.lua"); done
+    "$TSHARK" -r "$1" "${args[@]}" -T fields -e "$2" 2>>"$WORK/err"
+}
+P="$WORK/pcaps"
+[ "$(field_of "$P/mk_android_dlt272.pcap" mouldking.cmd)" == "0x66" ];     check "mouldking.cmd" $?
+[ "$(field_of "$P/mk_android_dlt272.pcap" mouldking.id)" == "0x7ba7" ];    check "mouldking.id" $?
+[ "$(field_of "$P/mk_android_dlt272.pcap" mouldking.platform)" == "Android" ]; check "mouldking.platform" $?
+[ "$(field_of "$P/mk_android_dlt272.pcap" mouldking.data)" == "80808080" ]; check "mouldking.data" $?
+[ "$(field_of "$P/powerbox_windows_dlt272.pcap" powerbox.cmd)" == "0x40" ]; check "powerbox.cmd" $?
+[ "$(field_of "$P/powerbox_windows_dlt272.pcap" powerbox.platform)" == "Windows" ]; check "powerbox.platform" $?
+[ "$(field_of "$P/cada_pc_android_dlt272.pcap" cada.cmd)" == "0x10" ];     check "cada.cmd" $?
+[ "$(field_of "$P/cada_pc_android_dlt272.pcap" cada.id)" == "0x75" ];      check "cada.id" $?
+[ "$(field_of "$P/cada_hs_android_dlt272.pcap" cada_hs.cmd)" == "0xbb" ];  check "cada_hs.cmd" $?
+[ "$(field_of "$P/cada_hs_android_dlt272.pcap" cada_hs.device_id)" == "0xc1c9" ]; check "cada_hs.device_id (little endian)" $?
+[ "$(field_of "$P/cada_hs_android_dlt272.pcap" cada_hs.seq)" == "0x05" ];  check "cada_hs.seq" $?
+# a display filter on a decoded value (-Y) selects exactly the frame
+[ "$("$TSHARK" -r "$P/mk_android_dlt272.pcap" -X "lua_script:$REPO/MouldKing.lua" -Y 'mouldking.cmd == 0x66' 2>>"$WORK/err" | wc -l)" -eq 1 ]
+check "display filter mouldking.cmd == 0x66 matches" $?
 
 echo "== no Lua errors in the packet tree"
 # Lua errors in a post-dissector are NOT printed on stderr but added as "Lua Error" expert info
