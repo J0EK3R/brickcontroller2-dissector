@@ -93,6 +93,37 @@ local VARIANTS = {
         headerOffset = 15,
     },
     {
+        -- iOS, verified with a real iOS capture: Flags `02 01 1a`, TX power AD `02 0a <dBm>`, then
+        -- the payload in an AD structure of type 0x03 (16-bit Service Class UUIDs, length 0x15).
+        -- The payload is encrypted like on Android (ctx2 0x25) but with header offset 13; the
+        -- datagrams are the Android ones (a4 = connect, 40 = command). The identifier bytes equal
+        -- the iOS MouldKing/JIE-STAR identifier (MouldKing.lua), the two are told apart by the
+        -- frame shape: advLen 28 here, advLen 31 there. The TX power value (offset 5) varies, so it is
+        -- not part of the pattern.
+        platform = "iOS",
+        advLen = 28,
+        base = ADV_DATA,
+        pattern = {
+            { 3, 0x02 },    -- AD length: 2 (TX power level)
+            { 4, 0x0a },    -- AD type: TX Power Level (0x0a)
+            { 6, 0x15 },    -- AD length: 21
+            { 7, 0x03 },    -- AD type: 16-bit Service Class UUIDs (0x03)
+            { 8, 0xf9 },    -- identifier (first bytes of the encrypted payload)
+            { 9, 0x08 },
+            { 10, 0x49 },
+            { 11, 0x22 },
+            { 12, 0x47 },
+            { 13, 0xba },
+            { 14, 0xc4 },
+            { 15, 0xbc },
+        },
+        rawOffset = 8,
+        rawLength = 18,
+        headerOffset = 13,
+    },
+    {
+        -- UNVERIFIED: this row was written without a capture and was never seen in the iOS capture
+        -- that verified the row above. Kept as it was.
         platform = "iOS",
         advLen = 26,
         base = ADV_DATA,
