@@ -6,6 +6,13 @@
 -- Run from the repository root:  lua5.4 tests/test_ble_tools.lua
 -- Exit code 0 = all tests passed.
 
+-- Wireshark loads every .lua file below its plugin directory, also this one when the repository
+-- is cloned into the personal plugins folder. Inside Wireshark the global Proto exists: do
+-- nothing then, so the stubs below can never replace the real Field API.
+if Proto ~= nil then
+    return
+end
+
 -- Locate the repository root from this script's path and extend package.path.
 local script = debug.getinfo(1, "S").source:sub(2)
 local root = (script:match("(.+)[/\\]tests[/\\]") or ".")
@@ -36,12 +43,14 @@ end
 -- The frame the stub Field returns: nil (no btle field), or a FieldInfo whose range:tvb()
 -- yields the LL packet re-based at offset 0 - regardless of junk bytes before it in the frame.
 local currentField
+local originalField = Field          -- restored after loading the module: no global leaks
 Field = { new = function(name)
     assert(name == "btle", "BLE_Tools must only create the btle field")
     return function() return currentField end
 end }
 
 local BleTools = require("BLE_Tools")
+Field = originalField               -- the module keeps its own reference to the stub extractor
 
 --- Little endian access address as a byte string.
 local function aaBytes(aa)

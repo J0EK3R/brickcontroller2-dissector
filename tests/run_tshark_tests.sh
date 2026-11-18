@@ -10,7 +10,10 @@
 #      advertising data length, no btle layer at all): the Info column equals the one
 #      tshark prints WITHOUT any plugin, i.e. the dissectors return 0 and do not touch it,
 #   3. tshark prints nothing that looks like a Lua error on stderr,
-#   4. optional (COMPARE_MAIN=1): the ORIGINAL dissectors from git branch main
+#   4. the repository cloned into a (fake) personal plugin folder, tests/ included, decodes the same
+#      (Wireshark loads *.lua files recursively), and the startup prints no Lua load errors,
+#   5. a real capture of the XN297L sniffer (tests/captures, DLT 256) is decoded in both modes,
+#   6. optional (COMPARE_MAIN=1): the ORIGINAL dissectors from git branch main
 #      produce the same Info as the new ones on DLT 272.
 #
 # Environment: TSHARK (default "tshark"), PYTHON (default "python3").
@@ -85,6 +88,39 @@ for f in "$WORK"/pcaps/neg_*.pcap; do
     with="$(info_of "$f" "$REPO")"
     [ "$base" == "$with" ]; check "$(basename "$f"): Info unchanged ($with)" $?
 done
+
+echo "== repository installed as personal plugin folder (fake HOME, incl. tests/)"
+FAKE_HOME="$WORK/home"
+PLUGIN_DIR="$FAKE_HOME/.local/lib/wireshark/plugins/brickcontroller2-dissector"
+mkdir -p "$PLUGIN_DIR" && cp -r "$REPO"/. "$PLUGIN_DIR"/ && rm -rf "$PLUGIN_DIR/.git"
+# info_installed <pcap>: Info column with the plugins loaded from the personal plugin folder only
+info_installed() {
+    HOME="$FAKE_HOME" "$TSHARK" -r "$1" -o 'gui.column.format:"Info","%i"' 2>>"$WORK/err_installed"
+}
+: > "$WORK/err_installed"
+for info_file in "$WORK"/pcaps/*.info; do
+    name="$(basename "$info_file" .info)"
+    [ "$(info_installed "$WORK/pcaps/${name}_dlt272.pcap")" == "$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$REPO")" ]
+    check "$name: installed plugin folder == -X lua_script" $?
+done
+HOME="$FAKE_HOME" "$TSHARK" -G plugins >/dev/null 2>>"$WORK/err_installed"
+if grep -qi 'lua' "$WORK/err_installed"; then cat "$WORK/err_installed"; false; else true; fi
+check "no Lua load errors with the installed plugin folder (tshark startup, -G plugins)" $?
+
+echo "== real capture (XN297L sniffer, DLT 256)"
+REAL="$REPO/tests/captures/bleadvert_xn297l_dlt256.pcapng"
+EXPECT="Android - MouldKing - MK4.0/MK5.0 Connect"
+n_x="$(info_of "$REAL" "$REPO" | grep -c "$EXPECT")"
+n_i="$(info_installed "$REAL" | grep -c "$EXPECT")"
+n_base="$(info_of "$REAL" none | grep -c "$EXPECT")"
+echo "     frames with '$EXPECT': -X mode $n_x, installed folder $n_i, without plugins $n_base"
+[ "$n_x" -eq 48 ];    check "real capture: 48 MouldKing frames decoded with -X lua_script" $?
+[ "$n_i" -eq 48 ];    check "real capture: 48 MouldKing frames decoded from installed plugin folder" $?
+[ "$n_base" -eq 0 ];  check "real capture: no MouldKing text without plugins" $?
+if [ -n "$OLD_DIR" ]; then
+    [ "$(info_of "$REAL" "$OLD_DIR" | grep -c "$EXPECT")" -eq 0 ]
+    check "real capture: original (main) dissectors do NOT decode it (DLT 256 bug)" $?
+fi
 
 echo "== no Lua errors in the packet tree"
 # Lua errors in a post-dissector are NOT printed on stderr but added as "Lua Error" expert info

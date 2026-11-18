@@ -7,7 +7,7 @@ additional items in the packet tree ("Android - MouldKing - ... Command - Cmd[66
 
 ## Installation
 
-Copy or clone the **whole folder** into the Wireshark personal Lua plugins directory. All `.lua`
+Copy or clone the **whole folder** (cloning the complete repository, including `tests/`, directly into the plugins directory is fine: the test script is inert inside Wireshark) into the Wireshark personal Lua plugins directory. All `.lua`
 files are needed, including the helper modules `BLE_Tools.lua`, `Crypt_Tools.lua` and `CaDA_Tools.lua`.
 
 | OS | Directory |
