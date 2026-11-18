@@ -20,10 +20,10 @@
 #   9. optional (COMPARE_MAIN=1): the dissectors from git branch main produce the same Info
 #      column AND the same packet tree (tshark -V) as the current code, for every variant,
 #      the real capture and a generated command sweep (all commands / lengths / variants,
-#      see make_pcaps.py - generated on the fly, not committed as capture). The verified iOS rows are
-#      the only deliberate difference: main does not decode them, they are checked separately.
+#      see make_pcaps.py - generated on the fly, not committed as capture). Use it against a main that
+#      does not contain the change under test.
 #  10. the verified iOS rows: a generated iOS sweep (MouldKing / JIE-STAR / PowerBox) is decoded completely,
-#      main decodes none of it, and (optional) a local iOS capture is decoded without leftovers; the
+#      same Info and tree as main with COMPARE_MAIN=1, and (optional) a local iOS capture is decoded without leftovers; the
 #      full capture is NOT part of the repository (a small selection is, see 11): set IOS_CAPTURE=/path/to/bleadvert.iOS.pcapng (default:
 #      ../../tasks/022-ios-variants/bleadvert.iOS.pcapng next to the repository, skipped when missing).
 #  11. real BrickController2 telegrams (tests/captures/real_android.pcapng, real_ios.pcapng): the Info column
@@ -39,8 +39,6 @@ REPO="$(dirname "$HERE")"
 TSHARK="${TSHARK:-tshark}"
 PYTHON="${PYTHON:-python3}"
 LUAC="${LUAC:-luac5.4}"
-# Variants whose iOS row was verified/changed on purpose: main does not decode them like the current code.
-IOS_CHANGED=" mk_ios mk_ios_mk6 mk_ios_js_ee mk_ios_js_6f powerbox_ios "
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -102,16 +100,10 @@ for info_file in "$WORK"/pcaps/*.info; do
     [ "$i272" == "$i256" ];         check "$name: DLT 272 == DLT 256" $?
     [ "$i272" == "$i251" ];         check "$name: DLT 272 == DLT 251" $?
     if [ -n "$OLD_DIR" ]; then
-        if [[ "$IOS_CHANGED" == *" $name "* ]]; then
-            # main leaves these frames alone: the Info column is the plain btle text there
-            [[ "$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")" != *"iOS - "* ]]
-            check "$name: main does not decode the frame (new iOS row on purpose)" $?
-        else
-            old272="$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")"
-            [ "$i272" == "$old272" ];   check "$name: Info new == original (main) on DLT 272" $?
-            [ "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$REPO")" == "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")" ]
-            check "$name: packet tree (-V) new == original (main) on DLT 272" $?
-        fi
+        old272="$(info_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")"
+        [ "$i272" == "$old272" ];   check "$name: Info new == original (main) on DLT 272" $?
+        [ "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$REPO")" == "$(tree_of "$WORK/pcaps/${name}_dlt272.pcap" "$OLD_DIR")" ]
+        check "$name: packet tree (-V) new == original (main) on DLT 272" $?
     fi
 done
 
@@ -185,7 +177,9 @@ if [ -n "$OLD_DIR" ]; then
     A="$REPO/tests/captures/real_android.pcapng"
     [ "$(info_of "$A" "$REPO")" == "$(info_of "$A" "$OLD_DIR")" ]; check "real_android: Info new == original (main)" $?
     [ "$(tree_of "$A" "$REPO")" == "$(tree_of "$A" "$OLD_DIR")" ]; check "real_android: packet tree (-V) new == original (main)" $?
-    [[ "$(info_of "$REPO/tests/captures/real_ios.pcapng" "$OLD_DIR")" != *"iOS - "* ]]; check "real_ios: main decodes none of the frames (new iOS rows)" $?
+    I="$REPO/tests/captures/real_ios.pcapng"
+    [ "$(info_of "$I" "$REPO")" == "$(info_of "$I" "$OLD_DIR")" ]; check "real_ios: Info new == original (main)" $?
+    [ "$(tree_of "$I" "$REPO")" == "$(tree_of "$I" "$OLD_DIR")" ]; check "real_ios: packet tree (-V) new == original (main)" $?
 fi
 
 if [ -n "$OLD_DIR" ]; then
@@ -213,7 +207,8 @@ echo "     $n_mk MouldKing/JIE-STAR frames (expected $want_mk), $n_pb PowerBox f
 [ "$n_pb" -eq "$want_pb" ]; check "iOS sweep: every shape B frame is decoded as iOS - PowerBox" $?
 ! grep -q "Decryption failed" <<< "$ios_info"; check "iOS sweep: no decryption failure" $?
 if [ -n "$OLD_DIR" ]; then
-    [[ "$(info_of "$IOS" "$OLD_DIR")" != *"iOS - "* ]]; check "iOS sweep: main decodes none of the frames (they are new)" $?
+    [ "$(info_of "$IOS" "$REPO")" == "$(info_of "$IOS" "$OLD_DIR")" ]; check "iOS sweep: Info new == original (main)" $?
+    [ "$(tree_of "$IOS" "$REPO")" == "$(tree_of "$IOS" "$OLD_DIR")" ]; check "iOS sweep: packet tree (-V) new == original (main)" $?
 fi
 
 echo "== local iOS capture (optional, not part of the repository)"
