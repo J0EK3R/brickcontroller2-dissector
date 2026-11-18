@@ -24,8 +24,10 @@
 #      the only deliberate difference: main does not decode them, they are checked separately.
 #  10. the verified iOS rows: a generated iOS sweep (MouldKing / JIE-STAR / PowerBox) is decoded completely,
 #      main decodes none of it, and (optional) a local iOS capture is decoded without leftovers; the
-#      capture is NOT part of the repository: set IOS_CAPTURE=/path/to/bleadvert.iOS.pcapng (default:
+#      full capture is NOT part of the repository (a small selection is, see 11): set IOS_CAPTURE=/path/to/bleadvert.iOS.pcapng (default:
 #      ../../tasks/022-ios-variants/bleadvert.iOS.pcapng next to the repository, skipped when missing).
+#  11. real BrickController2 telegrams (tests/captures/real_android.pcapng, real_ios.pcapng): the Info column
+#      equals the golden files real_*.info in -X mode and from the installed plugin folder, plus ProtoField values.
 #
 # Environment: TSHARK (default "tshark"), PYTHON (default "python3"), LUAC (default "luac5.4").
 # Needs Wireshark with Lua support (Lua 5.3+ syntax is used by Crypt_Tools.lua).
@@ -155,6 +157,37 @@ if [ -n "$OLD_DIR" ]; then
     check "real capture: packet tree (-V) new == original (main)" $?
 fi
 
+echo "== real BrickController2 telegrams (Android + iOS, tests/captures/real_*.pcapng) vs golden Info files"
+# The golden files hold the expected Info column, one line per frame (same order as the capture).
+for plat in android ios; do
+    cap="$REPO/tests/captures/real_$plat.pcapng"
+    golden="$(cat "$REPO/tests/captures/real_$plat.info")"
+    n_frames="$("$TSHARK" -r "$cap" 2>>"$WORK/err" | wc -l)"
+    [ "$(info_of "$cap" "$REPO")" == "$golden" ]; check "real_$plat: Info == golden file, -X lua_script ($n_frames frames)" $?
+    [ "$(info_installed "$cap")" == "$golden" ];  check "real_$plat: Info == golden file, installed plugin folder" $?
+    # every frame of these captures is a BrickController2 telegram: none may stay undecoded
+    [ "$(grep -c ' - ' <<< "$golden")" -eq "$n_frames" ]
+    check "real_$plat: every frame is a decoded telegram (no leftover radio frames)" $?
+    [ "$(info_of "$cap" none | grep -c ' - ')" -eq 0 ]; check "real_$plat: nothing decoded without the plugins" $?
+done
+# every device family appears in the golden files (the golden files pin the decoding per family)
+for fam in "iOS - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Command" "iOS - MouldKing - MK3.8 Command" \
+           "iOS - MouldKing - MK4.0/MK5.0 Command" "iOS - MouldKing - MK6.0[1] Command" \
+           "iOS - JIE-STAR - JIE-STAR 8CH[1] Command" "iOS - JIE-STAR - JIE-STAR 4CH[1] Command" \
+           "iOS - JIE-STAR - JIE-STAR 4CH[2] Command" "iOS - JIE-STAR - JIE-STAR 4CH[3] Command" \
+           "iOS - PowerBox - Command" "iOS - PowerBox - Connect" \
+           "Android - MouldKing - MK3.8 Command" "Android - MouldKing - MK4.0/MK5.0 Command" \
+           "Android - MouldKing - MK6.0[3] Command" "Android - JIE-STAR - JIE-STAR 8CH[1] Command" \
+           "Android - JIE-STAR - JIE-STAR 4CH[2] Command" "Android - PowerBox - Command" "Android - CaDA - Control"; do
+    grep -q -F -- "$fam" "$REPO"/tests/captures/real_ios.info "$REPO"/tests/captures/real_android.info; check "golden files contain: $fam" $?
+done
+if [ -n "$OLD_DIR" ]; then
+    A="$REPO/tests/captures/real_android.pcapng"
+    [ "$(info_of "$A" "$REPO")" == "$(info_of "$A" "$OLD_DIR")" ]; check "real_android: Info new == original (main)" $?
+    [ "$(tree_of "$A" "$REPO")" == "$(tree_of "$A" "$OLD_DIR")" ]; check "real_android: packet tree (-V) new == original (main)" $?
+    [[ "$(info_of "$REPO/tests/captures/real_ios.pcapng" "$OLD_DIR")" != *"iOS - "* ]]; check "real_ios: main decodes none of the frames (new iOS rows)" $?
+fi
+
 if [ -n "$OLD_DIR" ]; then
     echo "== command sweep (generated frames of all commands/lengths/variants) vs main"
     SWEEP="$WORK/pcaps/sweep_dlt272.pcap"
@@ -226,6 +259,22 @@ P="$WORK/pcaps"
 [ "$(field_of "$P/cada_hs_android_dlt272.pcap" cada_hs.cmd)" == "0xbb" ];  check "cada_hs.cmd" $?
 [ "$(field_of "$P/cada_hs_android_dlt272.pcap" cada_hs.device_id)" == "0xc1c9" ]; check "cada_hs.device_id (little endian)" $?
 [ "$(field_of "$P/cada_hs_android_dlt272.pcap" cada_hs.seq)" == "0x05" ];  check "cada_hs.seq" $?
+# real telegrams: values decoded from the real captures
+RA="$REPO/tests/captures/real_android.pcapng"; RI="$REPO/tests/captures/real_ios.pcapng"
+# vals_of <pcap> <field> : sorted unique values of a field on one line (frames without the field are skipped)
+vals_of() { field_of "$1" "$2" | grep . | sort -u | tr '\n' ' '; }
+[ "$(vals_of "$RA" mouldking.id)" == "0x7800 0x785f " ];                check "real_android: mouldking.id values" $?
+[ "$(vals_of "$RI" mouldking.platform)" == "iOS " ];                    check "real_ios: mouldking.platform is iOS" $?
+[ "$(vals_of "$RA" mouldking.manufacturer)" == "JIE-STAR MouldKing " ]; check "real_android: mouldking.manufacturer" $?
+[ "$(vals_of "$RI" mouldking.cmd)" == "0x40 0x41 0x42 0x43 0x61 0x62 0x63 0x66 0x6d 0x7d 0x81 0xa4 0xaa 0xad 0xb1 " ]
+check "real_ios: mouldking.cmd covers all families (0x40-0x43, 0x61-0x63, 0x66, 0x6d, 0x7d, 0x81, connect 0xa4/0xaa/0xad/0xb1)" $?
+# the first frame is a Connect telegram (its data is not part of the Info), so compare the first Command frame
+[ "$(field_of "$RI" mouldking.data | grep . | sed -n 2p)" == "$(grep -m1 -oE '[0-9a-f]{2}( [0-9a-f]{2})+$' "$REPO/tests/captures/real_ios.info" | tr -d ' ')" ]
+check "real_ios: first Command mouldking.data equals the data bytes in the golden Info" $?
+[ "$(vals_of "$RI" powerbox.cmd)" == "0x40 0xa4 " ];                    check "real_ios: powerbox.cmd values (command and connect)" $?
+[ "$(vals_of "$RI" powerbox.platform)" == "iOS " ];                     check "real_ios: powerbox.platform" $?
+[ "$(vals_of "$RA" powerbox.platform)" == "Android " ];                 check "real_android: powerbox.platform" $?
+[ "$(field_of "$RA" cada.cmd | grep -c 0x13)" -eq 4 ];                 check "real_android: cada.cmd 0x13 in the four CaDA frames" $?
 # a display filter on a decoded value (-Y) selects exactly the frame
 [ "$("$TSHARK" -r "$P/mk_android_dlt272.pcap" -X "lua_script:$REPO/MouldKing.lua" -Y 'mouldking.cmd == 0x66' 2>>"$WORK/err" | wc -l)" -eq 1 ]
 check "display filter mouldking.cmd == 0x66 matches" $?
@@ -234,7 +283,7 @@ echo "== no Lua errors in the packet tree"
 # Lua errors in a post-dissector are NOT printed on stderr but added as "Lua Error" expert info
 # to the tree, so decode everything (all variants, the sweeps, the real capture) with -V.
 tree_errors=0
-for f in "$WORK"/pcaps/*.pcap "$REAL"; do
+for f in "$WORK"/pcaps/*.pcap "$REAL" "$REPO"/tests/captures/real_*.pcapng; do
     if tree_of "$f" "$REPO" 2>&1 | grep -q "Lua Error"; then
         echo "     Lua error in $(basename "$f")"; tree_errors=$((tree_errors + 1))
     fi

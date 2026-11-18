@@ -111,3 +111,16 @@ The visible packet tree is unchanged: fields without a line of their own are hid
 
 The tshark test generates identical packets as DLT 272, 256 and 251 captures (`tests/make_pcaps.py`)
 and checks that the Info column is the same for all of them. See `tests/README.md`.
+
+### Real captures in `tests/captures`
+
+* `real_android.pcapng` (46 frames) and `real_ios.pcapng` (62 frames): a few real BrickController2 telegrams per
+  device family, command and platform (MouldKing MK2.0 .. MK8.0, MK3.8, MK4.0/5.0, MK6.0, JIE-STAR 4CH[1..3] / 8CH,
+  PowerBox, CaDA on Android). Only the app's own frames were kept (no foreign devices, no scan requests/responses);
+  the link layer bytes are unchanged. The pcapng files are clean (no comments or system/interface information,
+  synthetic timestamps). The iOS file comes from an nRF52840 sniffer capture of an iOS phone. The Android file was
+  rebuilt from a Wireshark JSON export of captures of several devices: the advertising packets are real, but the
+  pseudo header (channel, RSSI) is synthetic and the CRC is zeroed.
+* `real_android.info` / `real_ios.info`: golden files with the expected Info column per frame; the tests compare
+  them with the decoded output.
+* `bleadvert_xn297l_dlt256.pcapng`: capture of the XN297L sniffer (MK4.0/5.0 Connect telegrams).

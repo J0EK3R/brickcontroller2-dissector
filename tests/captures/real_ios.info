@@ -1,0 +1,62 @@
+iOS - JIE-STAR - JIE-STAR 4CH[1] Connect - Cmd[a4] ID[39 2f]
+iOS - JIE-STAR - JIE-STAR 4CH[1] Command - Cmd[40] ID[39 2f] 90 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[1] Command - Cmd[40] ID[39 2f] a0 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[1] Command - Cmd[40] ID[39 2f] b0 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[1] Command - Cmd[40] ID[39 2f] 00 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[2] Connect - Cmd[a4] ID[39 2f]
+iOS - JIE-STAR - JIE-STAR 4CH[2] Command - Cmd[40] ID[39 2f] 90 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[2] Command - Cmd[40] ID[39 2f] a0 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[2] Command - Cmd[40] ID[39 2f] c0 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[2] Command - Cmd[40] ID[39 2f] d0 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[3] Connect - Cmd[a4] ID[39 2f]
+iOS - JIE-STAR - JIE-STAR 4CH[3] Command - Cmd[40] ID[39 2f] 90 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[3] Command - Cmd[40] ID[39 2f] b0 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[3] Command - Cmd[40] ID[39 2f] c0 00 80 80
+iOS - JIE-STAR - JIE-STAR 4CH[3] Command - Cmd[40] ID[39 2f] 00 18 80 80
+iOS - JIE-STAR - JIE-STAR 8CH Connect - Cmd[a4] ID[39 2f]
+iOS - JIE-STAR - JIE-STAR 8CH[1] Command - Cmd[41] ID[39 2f] 90 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[1] Command - Cmd[41] ID[39 2f] b0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[1] Command - Cmd[41] ID[39 2f] c0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[1] Command - Cmd[41] ID[39 2f] d0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[2] Command - Cmd[42] ID[39 2f] 90 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[2] Command - Cmd[42] ID[39 2f] b0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[2] Command - Cmd[42] ID[39 2f] c0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[2] Command - Cmd[42] ID[39 2f] d0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[3] Command - Cmd[43] ID[39 2f] 90 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[3] Command - Cmd[43] ID[39 2f] b0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[3] Command - Cmd[43] ID[39 2f] c0 00 00 00
+iOS - JIE-STAR - JIE-STAR 8CH[3] Command - Cmd[43] ID[39 2f] d0 00 00 00
+iOS - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Connect - Cmd[aa] ID[39 2f]
+iOS - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Command - Cmd[66] ID[39 2f] 83 80 80 80
+iOS - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Command - Cmd[66] ID[39 2f] c8 80 80 80
+iOS - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Command - Cmd[66] ID[39 2f] e0 80 80 80
+iOS - MouldKing - MK2.0/MK3.0/MK4.0D/MK8.0 Command - Cmd[66] ID[39 2f] 3a 80 80 80
+iOS - MouldKing - MK3.8 Connect - Cmd[b1] ID[39 00]
+iOS - MouldKing - MK3.8 Connect - Cmd[b1] ID[39 30]
+iOS - MouldKing - MK3.8 Command - Cmd[81] ID[39 00] a9 99 99 99 99 99
+iOS - MouldKing - MK3.8 Command - Cmd[81] ID[39 00] c9 99 99 99 99 99
+iOS - MouldKing - MK3.8 Command - Cmd[81] ID[39 00] d9 99 99 99 99 99
+iOS - MouldKing - MK3.8 Command - Cmd[81] ID[39 00] 19 99 99 99 99 99
+iOS - MouldKing - MK4.0/MK5.0 Connect - Cmd[ad] ID[39 2f]
+iOS - MouldKing - MK4.0/MK5.0 Command - Cmd[7d] ID[39 2f] 98 88 88 88 88 88
+iOS - MouldKing - MK4.0/MK5.0 Command - Cmd[7d] ID[39 2f] 88 88 98 88 88 88
+iOS - MouldKing - MK4.0/MK5.0 Command - Cmd[7d] ID[39 2f] 88 88 88 88 98 88
+iOS - MouldKing - MK4.0/MK5.0 Command - Cmd[7d] ID[39 2f] b0 00 80 80 80 80
+iOS - MouldKing - MK6.0 Connect - Cmd[6d] ID[39 2f]
+iOS - MouldKing - MK6.0[1] Command - Cmd[61] ID[39 2f] 85 80 80 80 80 80
+iOS - MouldKing - MK6.0[1] Command - Cmd[61] ID[39 2f] b1 80 80 80 80 80
+iOS - MouldKing - MK6.0[1] Command - Cmd[61] ID[39 2f] d7 80 80 80 80 80
+iOS - MouldKing - MK6.0[1] Command - Cmd[61] ID[39 2f] eb 80 80 80 80 80
+iOS - MouldKing - MK6.0[2] Command - Cmd[62] ID[39 2f] 85 80 80 80 80 80
+iOS - MouldKing - MK6.0[2] Command - Cmd[62] ID[39 2f] ac 80 80 80 80 80
+iOS - MouldKing - MK6.0[2] Command - Cmd[62] ID[39 2f] d0 80 80 80 80 80
+iOS - MouldKing - MK6.0[2] Command - Cmd[62] ID[39 2f] e2 80 80 80 80 80
+iOS - MouldKing - MK6.0[3] Command - Cmd[63] ID[39 2f] 85 80 80 80 80 80
+iOS - MouldKing - MK6.0[3] Command - Cmd[63] ID[39 2f] ab 80 80 80 80 80
+iOS - MouldKing - MK6.0[3] Command - Cmd[63] ID[39 2f] d3 80 80 80 80 80
+iOS - MouldKing - MK6.0[3] Command - Cmd[63] ID[39 2f] e6 80 80 80 80 80
+iOS - PowerBox - Connect Cmd[a4] ID[39 2f]
+iOS - PowerBox - Command Cmd[40] ID[39 2f] 90 00 00 00
+iOS - PowerBox - Command Cmd[40] ID[39 2f] b3 b3 00 00
+iOS - PowerBox - Command Cmd[40] ID[39 2f] d5 d5 00 00
+iOS - PowerBox - Command Cmd[40] ID[39 2f] e6 e6 00 00

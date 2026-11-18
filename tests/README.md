@@ -18,10 +18,16 @@
   The verified iOS rows are decoded by the current code only (main does not know them): a generated iOS sweep
   (`sweep_ios_dlt272.pcap`, all identifiers / commands) must be decoded completely and is checked
   separately (`COMPARE_MAIN=1` requires that main decodes none of it).
-  Optional local check against a real iOS capture, which is **not** part of the repository: set
+  Optional local check against a complete real iOS capture, which is **not** part of the repository (only the selection `captures/real_ios.pcapng` is): set
   `IOS_CAPTURE=/path/to/bleadvert.iOS.pcapng` (default `../../tasks/022-ios-variants/bleadvert.iOS.pcapng` relative
   to the repository, skipped when the file does not exist). It prints how many frames were decoded as
   `iOS - MouldKing/JIE-STAR` and `iOS - PowerBox`, requires no decryption failures, no generic
   "8-Byte Payload" text, no CaDA claim and no Lua error. `IOS_EXPECT_MK` / `IOS_EXPECT_PB` optionally pin the
-  exact counts. No packet of the capture is stored in the repository.
+  exact counts.
+  The real telegrams in `captures/real_android.pcapng` / `real_ios.pcapng` (see `README.md`, section
+  "Real captures") are decoded in `-X lua_script` mode and from the installed plugin folder and compared with the
+  golden files `captures/real_android.info` / `real_ios.info` (expected Info column per frame); a few ProtoField values
+  (`mouldking.cmd`, `powerbox.platform`, `cada.cmd`, ...) are checked as well. When a dissector output changes on purpose,
+  regenerate the golden file (`tshark -r <pcapng> -X lua_script:... -o 'gui.column.format:"Info","%i"' > <file>.info`)
+  and review the diff. Note: `COMPARE_MAIN=1` is only meaningful against a `main` that does not yet contain the change.
   Wireshark must be built with Lua 5.3 or newer (Wireshark 4.4 or newer).
