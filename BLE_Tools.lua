@@ -19,7 +19,14 @@
 --   12..   advertising data
 --   then   CRC (3 bytes), not needed here
 --
--- Plain Lua 5.1 - 5.4 compatible (Wireshark 4.2 embeds Lua 5.2): no bit operators.
+-- Besides getLinkLayer() the module holds the small helpers all dissectors share, so that the
+-- dissector files only contain data (variant tables) and no copy-pasted code:
+--   matches()          check a list of {offset, byte} pairs against the advertising data
+--   hex()              format bytes as " 7b a7 80"
+--   describe()         build the "Cmd[ad] ID[7b a7] 80 80" text of a decrypted datagram
+--   addPayloadTrees()  add the "Payload" and "decrypted" subtrees to the packet tree
+--
+-- Needs Lua 5.3 or newer (Wireshark 4.4 or newer), like the other modules of this repository.
 
 local BleTools = {}
 
@@ -73,6 +80,86 @@ function BleTools.getLinkLayer()
     end
 
     return ll, advLen
+end
+
+--- Check the advertising data against a byte pattern.
+-- The pattern lists only the bytes that identify a device; bytes that vary (device id,
+-- payload, ...) are simply not listed ("don't care").
+-- @param ll      Tvb of the LL packet as returned by getLinkLayer()
+-- @param base    offset the pattern offsets are relative to (usually ADV_DATA_OFFSET; a
+--                "virtual" base is fine for variants whose AD structures start earlier)
+-- @param pattern list of {offset, expectedByte} pairs
+-- @return true when every byte matches; false on the first mismatch or when an offset lies
+--         outside of the packet (no Lua error is raised)
+function BleTools.matches(ll, base, pattern)
+    for _, entry in ipairs(pattern) do
+        local offset = base + entry[1]
+        -- A pattern longer than the packet can never match; do not raise "out of bounds".
+        if offset < 0 or offset >= ll:len() then
+            return false
+        end
+        if ll(offset, 1):uint() ~= entry[2] then
+            return false
+        end
+    end
+    return true
+end
+
+--- Format a range of bytes as lower case hex, every byte preceded by a space.
+-- @param bytes ByteArray (0 based get_index)
+-- @param first index of the first byte
+-- @param last  index of the last byte (inclusive)
+-- @return text like " 7b a7 80"; empty string when last < first
+function BleTools.hex(bytes, first, last)
+    local text = ""
+    for index = first, last do
+        text = text .. string.format(" %02x", bytes:get_index(index))
+    end
+    return text
+end
+
+--- Describe a decrypted datagram: "Cmd[ad] ID[7b a7]" plus optional data bytes.
+-- Layout of all MouldKing / PowerBox datagrams: byte 0 command, bytes 1..2 device id,
+-- bytes 3.. data (the last byte is a checksum that is not shown).
+-- @param bytes      decrypted datagram (ByteArray)
+-- @param dataLength number of data bytes (starting at byte 3) to append; 0 = id only (Connect)
+-- @return text like "Cmd[66] ID[7b a7] 80 80 80 80"
+function BleTools.describe(bytes, dataLength)
+    local text = string.format("Cmd[%02x] ID[%02x%s]",
+        bytes:get_index(0), bytes:get_index(1), BleTools.hex(bytes, 2, 2))
+    if dataLength > 0 then
+        text = text .. BleTools.hex(bytes, 3, 2 + dataLength)
+    end
+    return text
+end
+
+--- Add the two subtrees every decrypting dissector shows for a frame.
+--   "<platform> - <manufacturer> - Payload"    : the raw (encrypted) payload and its length
+--   "<platform> - <manufacturer> - decrypted"  : the decrypted datagram, its name and length
+-- Does nothing when there is no tree (Wireshark only needs the Info column then) or when
+-- the payload could not be decrypted.
+-- @param tree         tree passed to the dissector function (may be nil)
+-- @param proto        Proto object of the calling dissector
+-- @param frameinfo    text used as name of the synthetic data sources
+-- @param platform     "Android", "iOS", "Windows"
+-- @param manufacturer "MouldKing", "JIE-STAR", ...
+-- @param encrypted    raw payload as ByteArray
+-- @param decrypted    decrypted datagram as ByteArray (nil when decryption failed)
+-- @param datagramname name of the datagram, e.g. "MK4.0/MK5.0 Connect - Cmd[ad] ID[7b a7]"
+function BleTools.addPayloadTrees(tree, proto, frameinfo, platform, manufacturer, encrypted, decrypted, datagramname)
+    if not (tree and decrypted) then
+        return
+    end
+    local prefix = platform .. " - " .. manufacturer .. " - "
+
+    -- The ByteArray data sources make the bytes visible (and selectable) in the hex view.
+    local tvb1 = ByteArray.tvb(encrypted, frameinfo)
+    local subtree1 = tree:add(proto, tvb1(), prefix .. "Payload")
+    subtree1:add(tvb1(), "Len: " .. tvb1():len())
+
+    local tvb2 = ByteArray.tvb(decrypted, frameinfo)
+    local subtree2 = tree:add(proto, tvb2(), prefix .. "decrypted")
+    subtree2:add(tvb2(), datagramname .. "-Datagram - Len: " .. tvb2():len())
 end
 
 return BleTools
